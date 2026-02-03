@@ -1,0 +1,440 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Minet Brand Color Palette */
+  --primary: #E21A22;
+  /* Minet Red */
+  --primary-dark: #b9151b;
+  --secondary: #000000;
+  /* Black */
+  --accent: #E21A22;
+
+  --bg-body: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
+
+  --text-main: #111111;
+  --text-muted: #64748b;
+
+  --success: #10B981;
+  --danger: #E21A22;
+  --warning: #F59E0B;
+
+  --font-sans: 'Outfit', sans-serif;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 25px 50px -12px rgba(226, 26, 34, 0.15);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-body);
+  color: var(--text-main);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-sans);
+}
+
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: var(--shadow-xl);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  padding: 0.85rem 2rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+}
+
+.btn-primary:hover {
+  background: var(--primary-dark);
+  box-shadow: 0 4px 12px rgba(226, 26, 34, 0.3);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(226, 26, 34, 0.1);
+}
+
+/* Tablet Responsive Styles */
+@media (max-width: 1024px) {
+  .container {
+    padding: 1.5rem;
+  }
+
+  /* Make tabs scrollable on tablet */
+  .tabs-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE/Edge */
+  }
+
+  .tabs-container::-webkit-scrollbar {
+    display: none;
+    /* Chrome/Safari */
+  }
+
+  /* QR Label sizing for tablet */
+  #printable-label {
+    width: 350px;
+    padding: 2rem;
+  }
+
+  .label-qr {
+    width: 200px;
+    height: 200px;
+  }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  /* Header adjustments */
+  header {
+    padding: 0.75rem 1rem !important;
+  }
+
+  header>div:first-child>div:first-child {
+    font-size: 0.9rem !important;
+  }
+
+  header>div:first-child>div:last-child {
+    font-size: 0.7rem !important;
+  }
+
+  /* Make tabs scrollable and compact on mobile */
+  .tabs-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    gap: 0.5rem !important;
+    padding-bottom: 0.25rem;
+  }
+
+  .tabs-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabs-container button {
+    flex-shrink: 0;
+    padding: 0.6rem 1rem !important;
+    font-size: 0.85rem !important;
+    white-space: nowrap;
+  }
+
+  /* QR Label sizing for mobile */
+  #printable-label {
+    width: 100%;
+    max-width: 320px;
+    padding: 1.5rem;
+  }
+
+  .label-logo {
+    width: 60px;
+  }
+
+  .label-qr {
+    width: 180px;
+    height: 180px;
+    margin-bottom: 1rem;
+  }
+
+  /* Grid layouts become single column on mobile */
+  .device-grid,
+  .alert-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Employee details panel */
+  .employee-details-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Button groups stack on mobile */
+  .button-group {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .button-group button {
+    width: 100%;
+  }
+
+  /* Modal adjustments */
+  .modal-content {
+    padding: 1.5rem !important;
+    margin: 1rem !important;
+  }
+
+  .modal-inner-content {
+    padding: 1rem !important;
+  }
+
+  /* Security scanner adjustments */
+  .scanner-container {
+    padding: 1rem !important;
+  }
+
+  /* Form inputs on mobile */
+  input,
+  select {
+    font-size: 16px;
+    /* Prevents zoom on iOS */
+  }
+}
+
+/* Device Card Responsive Styling */
+.device-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .device-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    position: relative;
+    padding-bottom: 4rem !important;
+    /* Make space for buttons */
+  }
+
+  .device-card>div:first-child {
+    /* Icon box */
+    align-self: flex-start;
+  }
+
+  .device-card>div:nth-child(2) {
+    /* Content */
+    width: 100%;
+  }
+
+  .device-card>div:last-child {
+    /* Actions */
+    width: 100%;
+    margin-top: 0.5rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+}
+
+/* Style the file selection button */
+#html5-qrcode-button-file-selection {
+  width: 100% !important;
+  padding: 0.75rem !important;
+  background: white !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--secondary) !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+#html5-qrcode-button-file-selection:hover {
+  background: #f8fafc !important;
+  border-color: var(--primary) !important;
+}
+
+/* Style camera selection button */
+#html5-qrcode-button-camera-permission {
+  width: 100% !important;
+  padding: 0.75rem !important;
+  background: var(--primary) !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  color: white !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+#html5-qrcode-button-camera-permission:hover {
+  background: var(--primary-dark) !important;
+}
+
+/* Responsive QR box size */
+@media (max-width: 640px) {
+  #reader {
+    font-size: 0.9rem !important;
+  }
+
+  /* Adjust QR scanning box for mobile */
+  #reader video {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
+
+/* QR Label Preview & Print Styling */
+#printable-label {
+  width: 400px;
+  padding: 2.5rem;
+  border-radius: 1.25rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+}
+
+.label-logo {
+  width: 80px;
+  height: auto;
+}
+
+.label-qr {
+  width: 240px;
+  height: 240px;
+  margin-bottom: 1.5rem;
+  display: block;
+}
+
+@media print {
+  body {
+    visibility: hidden;
+    background: white !important;
+  }
+
+  #printable-label {
+    visibility: visible !important;
+    position: fixed !important;
+    left: 50% !important;
+    top: 5mm !important;
+    transform: translateX(-50%) !important;
+    width: min-content !important;
+    /* Let content define width */
+    height: auto !important;
+    display: block !important;
+    text-align: center !important;
+    border: 1px solid #eee !important;
+    padding: 15mm !important;
+    border-radius: 20px !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-inside: avoid !important;
+  }
+
+  #printable-label * {
+    visibility: visible !important;
+  }
+
+  .label-logo-box {
+    border: 2px solid #E21A22 !important;
+    display: inline-block !important;
+    padding: 10px 20px !important;
+    border-radius: 12px !important;
+    margin-bottom: 5mm !important;
+  }
+
+  .label-logo {
+    width: 30mm !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  .label-tag {
+    color: #E21A22 !important;
+    font-size: 14pt !important;
+    font-weight: 800 !important;
+    margin-bottom: 8mm !important;
+    display: block !important;
+  }
+
+  .label-qr {
+    width: 60mm !important;
+    height: 60mm !important;
+    margin: 0 auto 10mm auto !important;
+    display: block !important;
+  }
+
+  .label-text-lg {
+    font-size: 20pt !important;
+    font-weight: 800 !important;
+    color: #000 !important;
+    margin: 0 0 2mm 0 !important;
+  }
+
+  .label-text-md {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    color: #475569 !important;
+    margin: 0 !important;
+  }
+
+  .label-text-sm {
+    font-size: 12pt !important;
+    font-weight: 800 !important;
+    color: #000 !important;
+    margin: 3mm 0 0 0 !important;
+  }
+
+  @page {
+    margin: 15mm;
+    size: A4 portrait;
+  }
+}
