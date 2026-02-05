@@ -131,6 +131,17 @@ export const addDevice = async (data: {
     color: string;
     assignedTo?: string | null; // empId
 }) => {
+    if (!data.assignedTo || data.assignedTo.trim() === "") {
+        throw new Error("Devices must be assigned to an employee when registered.");
+    }
+
+    const devicesSnap = await getDocs(collections.devices);
+    const allDevices = devicesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as any);
+    const existing = allDevices.find(d => d.assignedTo === data.assignedTo && d.type === data.type);
+    if (existing) {
+        throw new Error(`This employee already has a ${data.type} device (${existing.serialNumber}). Only one per type is permitted.`);
+    }
+
     await setDoc(doc(db, "devices", data.serialNumber), {
         ...data,
         qrCodeURL: null,

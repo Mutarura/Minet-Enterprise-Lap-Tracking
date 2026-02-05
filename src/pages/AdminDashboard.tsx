@@ -12,7 +12,7 @@ import {
     auth
 } from '../services/firebase';
 import { signOut } from 'firebase/auth';
-// import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
     Plus,
     Search,
@@ -21,7 +21,6 @@ import {
     Smartphone,
     X,
     Camera,
-    Download,
     Printer,
     Trash2,
     LogOut,
@@ -36,7 +35,6 @@ import Modal from '../components/Modal';
 import { generateQRCode } from '../utils/qr';
 import { doc, updateDoc } from 'firebase/firestore';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
-import html2canvas from 'html2canvas';
 
 const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState<'employees' | 'company' | 'byod' | 'alerts'>('employees');
@@ -46,7 +44,7 @@ const AdminDashboard = () => {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
 
-    // const navigate = useNavigate();
+    const navigate = useNavigate();
 
     // Selection state for details panel
     const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
@@ -66,6 +64,30 @@ const AdminDashboard = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [assigningType, setAssigningType] = useState<'COMPANY' | 'BYOD' | null>(null);
     const [assignSearch, setAssignSearch] = useState('');
+    const [showEmpFormModal, setShowEmpFormModal] = useState(false);
+    const [detailsHighlight, setDetailsHighlight] = useState(false);
+    const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
+
+    // MOBILE SESSION MANAGEMENT
+    const resetMobileState = () => {
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            setSelectedEmployee(null);
+            setIsAddingEmployee(false);
+            setEmpForm({ empId: '', name: '', departmentOrFloor: '' });
+            setPhotoFile(null);
+            setAssigningType(null);
+            setModalOpen(false);
+            setQrData(null);
+            setEditingDevice(null);
+            setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' });
+            setShowEmpFormModal(false);
+        }
+    };
+
+    const handleTabSwitch = (tab: typeof activeTab) => {
+        setActiveTab(tab);
+        resetMobileState();
+    };
 
     useEffect(() => {
         loadData();
@@ -154,9 +176,9 @@ const AdminDashboard = () => {
         try {
             const type = activeTab === 'company' ? 'COMPANY' : 'BYOD';
 
-            // SECURITY RULE: BYOD must be assigned to an employee at creation
-            if (type === 'BYOD' && !devForm.assignedTo && !editingDevice) {
-                alert("For security and fraud prevention, BYOD devices must be assigned to an employee during registration.");
+            // SECURITY RULE: All devices must be assigned at creation
+            if (!devForm.assignedTo && !editingDevice) {
+                alert("All devices must be assigned to an employee at registration.");
                 return;
             }
 
@@ -180,6 +202,7 @@ const AdminDashboard = () => {
             }
             setModalOpen(false);
             loadData();
+            resetMobileState(); // Ensure clean slate on mobile
             alert("Device saved successfully!");
         } catch (err: any) {
             alert("Error: " + err.message);
@@ -216,37 +239,14 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleDownloadLabel = async () => {
-        const labelElement = document.getElementById('printable-label');
-        if (!labelElement) return;
-
-        try {
-            const canvas = await html2canvas(labelElement, {
-                scale: 3, // High resolution
-                backgroundColor: '#ffffff',
-                useCORS: true,
-                logging: false,
-                onclone: (clonedDoc) => {
-                    // Ensure the cloned element is visible for capture
-                    const el = clonedDoc.getElementById('printable-label');
-                    if (el) {
-                        el.style.visibility = 'visible';
-                        el.style.position = 'relative';
-                        el.style.boxShadow = 'none';
-                        el.style.border = 'none'; // Clean look for download
-                    }
-                }
-            });
-
-            const dataUrl = canvas.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.download = `Minet_Label_${qrData?.device.serialNumber}.png`;
-            link.href = dataUrl;
-            link.click();
-        } catch (err) {
-            console.error("Download Error:", err);
-            alert("Failed to download label image.");
-        }
+    const handlePrintLabel = () => {
+        if (!qrData) return;
+        
+        // Save data to localStorage to persist across navigation
+        localStorage.setItem('printLabelData', JSON.stringify(qrData));
+        
+        // Navigate to the dedicated print page
+        navigate('/print-label');
     };
 
     const filteredEmployees = employees
@@ -300,16 +300,16 @@ const AdminDashboard = () => {
             <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem', width: '100%', boxSizing: 'border-box', flex: 1 }}>
                 {/* Tabs */}
                 <div className="tabs-container" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-                    <button onClick={() => setActiveTab('employees')} style={{ ...(activeTab === 'employees' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                    <button onClick={() => handleTabSwitch('employees')} style={{ ...(activeTab === 'employees' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
                         <Users size={16} /> Employees
                     </button>
-                    <button onClick={() => setActiveTab('company')} style={{ ...(activeTab === 'company' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                    <button onClick={() => handleTabSwitch('company')} style={{ ...(activeTab === 'company' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
                         <Laptop size={16} /> Company
                     </button>
-                    <button onClick={() => setActiveTab('byod')} style={{ ...(activeTab === 'byod' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                    <button onClick={() => handleTabSwitch('byod')} style={{ ...(activeTab === 'byod' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
                         <Smartphone size={16} /> BYOD
                     </button>
-                    <button onClick={() => setActiveTab('alerts')} style={{ ... (activeTab === 'alerts' ? { ...activeTabBtn, background: '#f59e0b', boxShadow: '0 4px 6px rgba(245, 158, 11, 0.2)' } : inactiveTabBtn), position: 'relative', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => handleTabSwitch('alerts')} style={{ ... (activeTab === 'alerts' ? { ...activeTabBtn, background: '#f59e0b', boxShadow: '0 4px 6px rgba(245, 158, 11, 0.2)' } : inactiveTabBtn), position: 'relative', whiteSpace: 'nowrap' }}>
                         <Bell size={16} /> Alerts
                         {!alertsLoading && alerts.length > 0 && (
                             <span style={{
@@ -351,10 +351,12 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <button onClick={() => {
+                                    const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
                                     setIsAddingEmployee(true);
                                     setSelectedEmployee(null);
                                     setEmpForm({ empId: '', name: '', departmentOrFloor: '' });
                                     setPhotoFile(null);
+                                    if (isMobile) setShowEmpFormModal(true);
                                 }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
                                     <Plus size={20} /> Add Employee
                                 </button>
@@ -372,13 +374,19 @@ const AdminDashboard = () => {
                                             setPhotoFile(null);
                                             setIsSubmitting(false);
                                         }}
-                                        onDelete={async (id) => { if (confirm('Delete employee?')) { await deleteEmployee(id); loadData(); } }}
+                                        onDelete={async (id) => { if (confirm('Delete employee?')) { await deleteEmployee(id); loadData(); resetMobileState(); } }}
                                         onView={(e) => {
                                             setSelectedEmployee(e);
                                             setIsAddingEmployee(false);
                                             setEmpForm({ empId: e.empId, name: e.name, departmentOrFloor: e.departmentOrFloor });
                                             setPhotoFile(null);
                                             setIsSubmitting(false);
+                                            const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+                                            if (isMobile && detailsPanelRef.current) {
+                                                detailsPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                setDetailsHighlight(true);
+                                                setTimeout(() => setDetailsHighlight(false), 1200);
+                                            }
                                         }}
                                     />
                                 ))}
@@ -386,7 +394,7 @@ const AdminDashboard = () => {
                         </div>
 
                         {/* Details Panel */}
-                        <aside className="glass-card" style={{ padding: '2.5rem', height: 'fit-content', position: 'sticky', top: '100px' }}>
+                        <aside ref={detailsPanelRef} className="glass-card" style={{ padding: '2.5rem', height: 'fit-content', position: 'sticky', top: '100px', boxShadow: detailsHighlight ? '0 0 0 3px rgba(226, 26, 34, 0.25)' : undefined }}>
                             {isAddingEmployee || selectedEmployee ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -672,7 +680,7 @@ const AdminDashboard = () => {
                                     key={dev.id}
                                     device={dev}
                                     onEdit={(d) => { setEditingDevice(d); setDevForm(d); setModalType('device'); setModalOpen(true); }}
-                                    onDelete={async (id) => { if (confirm('Retire (delete) this device permanently?')) { await retireDevice(id); loadData(); } }}
+                                    onDelete={async (id) => { if (confirm('Retire (delete) this device permanently?')) { await retireDevice(id); loadData(); resetMobileState(); } }}
                                     onGenerateQR={handleGenerateQR}
                                 />
                             ))}
@@ -684,41 +692,28 @@ const AdminDashboard = () => {
             {/* Device/QR Modal */}
             <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={modalType === 'qr' ? 'Security QR Code' : 'Device Management'}>
                 {modalType === 'qr' ? (
-                    <div style={{ textAlign: 'center', padding: '1rem', position: 'relative' }}>
+                    <div className="qr-preview-container">
                         {/* THE PRINTABLE LABEL AREA */}
-                        <div id="printable-label" style={{
-                            background: 'white',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            margin: '0 auto'
-                        }}>
-                            <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                                <div className="label-logo-box" style={{
-                                    border: '2.5px solid var(--primary)',
-                                    borderRadius: '12px',
-                                    padding: '10px 20px',
-                                    marginBottom: '0.75rem',
-                                    display: 'inline-block'
-                                }}>
-                                    <img src="/logo.png" className="label-logo" style={{ display: 'block' }} alt="Minet" />
+                        <div id="printable-label">
+                            <div className="label-header">
+                                <div className="label-logo-box">
+                                    <img src="/logo.png" className="label-logo" alt="Minet" />
                                 </div>
-                                <div className="label-text-md label-tag" style={{ fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', fontSize: '1.1rem', textTransform: 'uppercase' }}>ASSET TAG</div>
+                                <div className="label-tag">ASSET TAG</div>
                             </div>
 
                             <img src={qrData?.url} className="label-qr" alt="QR Code" />
 
-                            <div style={{ textAlign: 'center' }}>
-                                <h3 className="label-text-lg" style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: '800', color: '#111' }}>{qrData?.device.make} {qrData?.device.model}</h3>
-                                <p className="label-text-md" style={{ margin: 0, fontSize: '0.95rem', color: '#475569', fontWeight: '700' }}>S/N: {qrData?.device.serialNumber}</p>
-                                <p className="label-text-sm" style={{ margin: '0.5rem 0 0 0', fontWeight: '800', fontSize: '0.9rem', color: '#111' }}>User: {qrData?.device.employeeName}</p>
+                            <div className="label-info">
+                                <h3 className="label-title">{qrData?.device.make} {qrData?.device.model}</h3>
+                                <p className="label-sn">S/N: {qrData?.device.serialNumber}</p>
+                                <p className="label-user">User: {qrData?.device.employeeName}</p>
                             </div>
                         </div>
 
-                        <div className="no-print button-group" style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                            <button className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => window.print()}><Printer size={18} /> Print Label</button>
-                            <button className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: '#475569' }} onClick={handleDownloadLabel}><Download size={18} /> Download Label</button>
-                        </div>
+                        <div className="no-print button-group">
+              <button className="btn-primary" onClick={handlePrintLabel}><Printer size={18} /> Print Label</button>
+            </div>
                     </div>
                 ) : (
                     <form onSubmit={handleDeviceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -742,8 +737,7 @@ const AdminDashboard = () => {
                         </div>
                         <div>
                             <label style={labelStyle}>Assign to Employee (Emp ID)</label>
-                            <select value={devForm.assignedTo || ''} onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })} style={inputStyle}>
-                                <option value="">Unassigned</option>
+                            <select value={devForm.assignedTo || ''} onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })} style={inputStyle} required>
                                 {employees.map(e => (
                                     <option key={e.id} value={e.empId}>{e.name} ({e.empId})</option>
                                 ))}
@@ -753,6 +747,31 @@ const AdminDashboard = () => {
                     </form>
                 )}
             </Modal>
+            <Modal isOpen={showEmpFormModal} onClose={() => { setShowEmpFormModal(false); setIsAddingEmployee(false); }} title="New Employee">
+                <form onSubmit={handleEmployeeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                        <label style={labelStyle}>Employee ID</label>
+                        <input value={empForm.empId} onChange={e => setEmpForm({ ...empForm, empId: e.target.value })} style={inputStyle} required />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Full Name</label>
+                        <input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} style={inputStyle} required />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Department / Floor</label>
+                        <input value={empForm.departmentOrFloor} onChange={e => setEmpForm({ ...empForm, departmentOrFloor: e.target.value })} style={inputStyle} required />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Photo</label>
+                        <input type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files?.[0] || null)} style={inputStyle} />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                        {isSubmitting ? 'Saving...' : 'Save Employee'}
+                    </button>
+                </form>
+            </Modal>
+
+            {/* Hidden Print-Only Section Removed */}
         </div>
     );
 };

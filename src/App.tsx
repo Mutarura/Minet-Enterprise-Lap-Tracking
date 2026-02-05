@@ -14,6 +14,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import LandingPage from './pages/LandingPage';
 import ITLogin from './pages/ITLogin';
 import SecurityLogin from './pages/SecurityLogin';
+import PrintLabel from './pages/PrintLabel';
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' }) => {
   const [user, setUser] = useState(null);
@@ -72,6 +73,7 @@ function App() {
         <Route path="/login/security" element={<SecurityLogin />} />
         <Route path="/dashboard/it" element={<ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>} />
         <Route path="/dashboard/security" element={<ProtectedRoute role="security"><SecurityDashboard /></ProtectedRoute>} />
+        <Route path="/print-label" element={<PrintLabel />} />
         {/* Fill in legacy routes for redirection if needed, or remove them */}
         <Route path="/admin" element={<Link to="/dashboard/it" replace />} />
         <Route path="/security" element={<Link to="/dashboard/security" replace />} />

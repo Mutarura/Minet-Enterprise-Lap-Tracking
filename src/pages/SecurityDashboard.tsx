@@ -54,6 +54,22 @@ const SecurityDashboard = () => {
     const [exportDates, setExportDates] = useState({ start: '', end: '' });
     const [exportFilename, setExportFilename] = useState('');
 
+    // MOBILE SESSION MANAGEMENT
+    const resetMobileState = () => {
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            setScanState('idle');
+            setScannedMetadata(null);
+            setSearchTerm('');
+            setShowExportModal(false);
+            setExportDates({ start: '', end: '' });
+        }
+    };
+
+    const handleTabSwitch = (tab: typeof activeTab) => {
+        setActiveTab(tab);
+        resetMobileState();
+    };
+
     // const navigate = useNavigate();
 
     useEffect(() => {
@@ -245,13 +261,13 @@ const SecurityDashboard = () => {
                 {scanState === 'idle' && (
                     <>
                         <div className="tabs-container" style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-sm)', padding: '4px', marginBottom: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
-                            <button onClick={() => setActiveTab('scanner')} style={{ ... (activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('scanner')} style={{ ... (activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
                                 <ScanLine size={16} /> Scanner
                             </button>
-                            <button onClick={() => setActiveTab('logs')} style={{ ... (activeTab === 'logs' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('logs')} style={{ ... (activeTab === 'logs' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
                                 <ListFilter size={16} /> Activities
                             </button>
-                            <button onClick={() => setActiveTab('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b' } : inactiveTabStyle), position: 'relative', flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b' } : inactiveTabStyle), position: 'relative', flex: 1, whiteSpace: 'nowrap' }}>
                                 <Bell size={16} /> Alerts
                                 {!alertsLoading && alerts.length > 0 && (
                                     <span style={{
