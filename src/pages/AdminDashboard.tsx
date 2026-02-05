@@ -12,7 +12,7 @@ import {
     auth
 } from '../services/firebase';
 import { signOut } from 'firebase/auth';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import {
     Plus,
     Search,
@@ -46,7 +46,7 @@ const AdminDashboard = () => {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
 
-    const navigate = useNavigate();
+    // const navigate = useNavigate();
 
     // Selection state for details panel
     const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
@@ -263,18 +263,19 @@ const AdminDashboard = () => {
     };
 
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+        <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
             <header style={{ background: 'white', padding: '1.25rem 2rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
                 <div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '2px' }}>Admin Dashboard</div>
+                    <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '2px' }}>ADMIN DASHBOARD</div>
                 </div>
 
                 <button
-                    onClick={() => {
+                    onClick={async () => {
                         if (confirm('Are you sure you want to logout?')) {
-                            signOut(auth).then(() => navigate('/'));
+                            await signOut(auth);
+                            window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
                         }
                     }}
                     style={{
@@ -282,44 +283,45 @@ const AdminDashboard = () => {
                         border: '1px solid rgba(226, 26, 34, 0.2)',
                         color: 'var(--primary)',
                         fontWeight: '700',
-                        padding: '0.75rem 1.5rem',
+                        padding: '0.5rem 1rem',
                         borderRadius: 'var(--radius-sm)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.6rem',
+                        gap: '0.5rem',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                     }}
                 >
-                    <LogOut size={20} /> Logout
+                    <LogOut size={18} />
+                    <span>Logout</span>
                 </button>
             </header>
 
-            <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
+            <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem', width: '100%', boxSizing: 'border-box', flex: 1 }}>
                 {/* Tabs */}
                 <div className="tabs-container" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-                    <button onClick={() => setActiveTab('employees')} style={activeTab === 'employees' ? activeTabBtn : inactiveTabBtn}>
-                        <Users size={18} /> Employees
+                    <button onClick={() => setActiveTab('employees')} style={{ ...(activeTab === 'employees' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                        <Users size={16} /> Employees
                     </button>
-                    <button onClick={() => setActiveTab('company')} style={activeTab === 'company' ? activeTabBtn : inactiveTabBtn}>
-                        <Laptop size={18} /> Company Laptops
+                    <button onClick={() => setActiveTab('company')} style={{ ...(activeTab === 'company' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                        <Laptop size={16} /> Company
                     </button>
-                    <button onClick={() => setActiveTab('byod')} style={activeTab === 'byod' ? activeTabBtn : inactiveTabBtn}>
-                        <Smartphone size={18} /> BYOD
+                    <button onClick={() => setActiveTab('byod')} style={{ ...(activeTab === 'byod' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                        <Smartphone size={16} /> BYOD
                     </button>
-                    <button onClick={() => setActiveTab('alerts')} style={{ ... (activeTab === 'alerts' ? { ...activeTabBtn, background: '#f59e0b', boxShadow: '0 4px 6px rgba(245, 158, 11, 0.2)' } : inactiveTabBtn), position: 'relative' }}>
-                        <Bell size={18} /> System Alerts
+                    <button onClick={() => setActiveTab('alerts')} style={{ ... (activeTab === 'alerts' ? { ...activeTabBtn, background: '#f59e0b', boxShadow: '0 4px 6px rgba(245, 158, 11, 0.2)' } : inactiveTabBtn), position: 'relative', whiteSpace: 'nowrap' }}>
+                        <Bell size={16} /> Alerts
                         {!alertsLoading && alerts.length > 0 && (
                             <span style={{
                                 position: 'absolute',
-                                top: '-8px',
-                                right: '-8px',
+                                top: '-4px',
+                                right: '-4px',
                                 background: 'var(--primary)',
                                 color: 'white',
                                 borderRadius: '50%',
-                                minWidth: '22px',
-                                height: '22px',
-                                fontSize: '0.75rem',
+                                minWidth: '18px',
+                                height: '18px',
+                                fontSize: '0.65rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -683,31 +685,6 @@ const AdminDashboard = () => {
             <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={modalType === 'qr' ? 'Security QR Code' : 'Device Management'}>
                 {modalType === 'qr' ? (
                     <div style={{ textAlign: 'center', padding: '1rem', position: 'relative' }}>
-                        <button
-                            onClick={() => setModalOpen(false)}
-                            className="no-print"
-                            style={{
-                                position: 'absolute',
-                                top: '-20px',
-                                right: '-10px',
-                                background: 'white',
-                                border: '1px solid #e2e8f0',
-                                color: '#64748b',
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                zIndex: 10
-                            }}
-                            title="Close Preview"
-                        >
-                            <X size={18} />
-                        </button>
-
                         {/* THE PRINTABLE LABEL AREA */}
                         <div id="printable-label" style={{
                             background: 'white',

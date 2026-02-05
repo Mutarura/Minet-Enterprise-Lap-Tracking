@@ -77,7 +77,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                         alignItems: 'center'
                     }}
                 >
-                    <Edit3 size={16} />
+                    <Edit3 size={18} />
                 </button>
                 <button
                     onClick={(e) => { e.stopPropagation(); onDelete(employee.id); }}
@@ -91,7 +91,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                         alignItems: 'center'
                     }}
                 >
-                    <Trash2 size={16} />
+                    <Trash2 size={18} />
                 </button>
             </div>
         </div>

@@ -9,7 +9,7 @@ import {
 } from '../services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import {
     query,
     where,
@@ -54,7 +54,7 @@ const SecurityDashboard = () => {
     const [exportDates, setExportDates] = useState({ start: '', end: '' });
     const [exportFilename, setExportFilename] = useState('');
 
-    const navigate = useNavigate();
+    // const navigate = useNavigate();
 
     useEffect(() => {
         // Fetch Today's Logs
@@ -199,53 +199,71 @@ const SecurityDashboard = () => {
     );
 
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '5rem' }}>
+        <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '5rem', display: 'flex', flexDirection: 'column' }}>
             {/* Professional Header */}
-            <header style={{ background: 'white', padding: '1rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            <header style={{ 
+                background: 'white', 
+                padding: '1.25rem 2rem', 
+                borderBottom: '1px solid #e2e8f0', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                position: 'sticky', 
+                top: 0, 
+                zIndex: 100, 
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)' 
+            }}>
                 <div>
                     <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--secondary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Security Dashboard</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>SECURITY DASHBOARD</div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                         onClick={() => setShowExportModal(true)}
-                        style={{ background: 'white', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', cursor: 'pointer', color: 'var(--secondary)' }}
+                        style={{ background: 'white', border: '1px solid #cbd5e1', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', cursor: 'pointer', color: 'var(--secondary)' }}
+                        title="Export"
                     >
-                        <Download size={18} /> Export
+                        <Download size={18} />
                     </button>
                     <button
-                        onClick={() => { if (confirm('Logout?')) signOut(auth).then(() => navigate('/')); }}
-                        style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '700', cursor: 'pointer', color: 'var(--secondary)' }}
+                        onClick={async () => { 
+                            if (confirm('Logout?')) { 
+                                await signOut(auth); 
+                                window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
+                            } 
+                        }}
+                        style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', cursor: 'pointer', color: 'var(--secondary)' }}
+                        title="Logout"
                     >
-                        <LogOut size={18} /> Logout
+                        <LogOut size={18} />
                     </button>
                 </div>
             </header>
 
-            <main style={{ maxWidth: '600px', margin: '0 auto', padding: '1.5rem' }}>
+            <main style={{ maxWidth: '600px', margin: '0 auto', padding: '2rem', width: '100%', boxSizing: 'border-box', flex: 1 }}>
                 {scanState === 'idle' && (
                     <>
-                        <div className="tabs-container" style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-sm)', padding: '4px', marginBottom: '2rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                            <button onClick={() => setActiveTab('scanner')} style={activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle}>
-                                <ScanLine size={18} /> Scanner
+                        <div className="tabs-container" style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-sm)', padding: '4px', marginBottom: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+                            <button onClick={() => setActiveTab('scanner')} style={{ ... (activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                                <ScanLine size={16} /> Scanner
                             </button>
-                            <button onClick={() => setActiveTab('logs')} style={activeTab === 'logs' ? activeTabStyle : inactiveTabStyle}>
-                                <ListFilter size={18} /> Activities
+                            <button onClick={() => setActiveTab('logs')} style={{ ... (activeTab === 'logs' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                                <ListFilter size={16} /> Activities
                             </button>
-                            <button onClick={() => setActiveTab('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b' } : inactiveTabStyle), position: 'relative' }}>
-                                <Bell size={18} /> Alerts
+                            <button onClick={() => setActiveTab('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b' } : inactiveTabStyle), position: 'relative', flex: 1, whiteSpace: 'nowrap' }}>
+                                <Bell size={16} /> Alerts
                                 {!alertsLoading && alerts.length > 0 && (
                                     <span style={{
                                         position: 'absolute',
-                                        top: '-8px',
-                                        right: '-8px',
+                                        top: '-4px',
+                                        right: '-4px',
                                         background: 'var(--primary)',
                                         color: 'white',
                                         borderRadius: '50%',
-                                        minWidth: '20px',
-                                        height: '20px',
-                                        fontSize: '0.7rem',
+                                        minWidth: '18px',
+                                        height: '18px',
+                                        fontSize: '0.65rem',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
