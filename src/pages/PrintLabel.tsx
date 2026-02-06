@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const PrintLabel = () => {
@@ -214,6 +214,7 @@ const PrintLabel = () => {
                         padding: 0;
                         width: 100%;
                         height: 100%;
+                        overflow: visible !important;
                         visibility: hidden; /* Hide everything by default */
                     }
 
