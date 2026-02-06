@@ -240,13 +240,14 @@ const AdminDashboard = () => {
     };
 
     const handlePrintLabel = () => {
-        if (!qrData) return;
+        console.log("Print button clicked", qrData);
+        if (!qrData) {
+            alert("Error: No label data available. Please regenerate the QR code.");
+            return;
+        }
         
-        // Save data to localStorage to persist across navigation
-        localStorage.setItem('printLabelData', JSON.stringify(qrData));
-        
-        // Navigate to the dedicated print page
-        navigate('/print-label');
+        // Use React Router state for robust data passing
+        navigate('/print-label', { state: qrData });
     };
 
     const filteredEmployees = employees

@@ -1,26 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const PrintLabel = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [qrData, setQrData] = useState<any>(null);
     const [imagesLoaded, setImagesLoaded] = useState({ logo: false, qr: false });
 
     useEffect(() => {
-        // Load data from storage
-        const storedData = localStorage.getItem('printLabelData');
-        if (storedData) {
-            setQrData(JSON.parse(storedData));
+        // Try getting data from location state (navigation) first, then localStorage (backup)
+        const stateData = location.state;
+        if (stateData) {
+            setQrData(stateData);
         } else {
-            navigate('/dashboard/it');
+            // Fallback to local storage for refresh
+            try {
+                const storedData = localStorage.getItem('printLabelData');
+                if (storedData) {
+                    setQrData(JSON.parse(storedData));
+                } else {
+                    console.warn("No print data found in state or storage");
+                    navigate('/dashboard/it');
+                }
+            } catch (error) {
+                console.error("Failed to load print data:", error);
+                navigate('/dashboard/it');
+            }
         }
-    }, [navigate]);
+    }, [navigate, location]);
 
     const handlePrint = () => {
-        window.print();
+        // Small delay to ensure rendering is complete and allow browser to breathe
+        setTimeout(() => {
+            window.print();
+        }, 500);
     };
 
     const handleImageLoad = (type: 'logo' | 'qr') => {
+        setImagesLoaded(prev => ({ ...prev, [type]: true }));
+    };
+
+    const handleImageError = (type: 'logo' | 'qr') => {
+        console.warn(`Failed to load ${type} image - likely blocked by client`);
+        // Mark as "loaded" so we don't block anything (even if we removed the check, this is good state management)
         setImagesLoaded(prev => ({ ...prev, [type]: true }));
     };
 
@@ -82,42 +104,46 @@ const PrintLabel = () => {
 
                 /* PRINT SPECIFIC STYLES */
                 @media print {
-                    /* Hide everything by default */
-                    body * {
-                        visibility: hidden;
-                    }
-                    
-                    /* Reset Body */
+                    /* Reset Page Layout */
                     body, html {
                         margin: 0;
                         padding: 0;
                         background: white;
                         height: 100%;
-                        overflow: visible;
                     }
 
-                    /* Show ONLY the label card and its children */
-                    .label-card, .label-card * {
-                        visibility: visible;
+                    .print-page-container {
+                        padding: 0;
+                        margin: 0;
+                        display: block; /* Override flex */
+                        width: 100%;
+                        height: 100%;
+                    }
+
+                    /* Hide Buttons */
+                    .action-buttons {
+                        display: none !important;
                     }
 
                     /* Position the label */
                     .label-card {
-                        position: absolute;
-                        top: 0;
-                        left: 0;
                         width: 100%;
-                        max-width: 100%; /* Allow full width printing if needed, or keep fixed */
+                        max-width: 100%;
                         margin: 0;
-                        padding: 10px;
+                        padding: 10px; /* Keep padding inside the sticker area */
                         border: none;
                         box-shadow: none;
                         border-radius: 0;
+                        /* Ensure it starts at the top left */
+                        position: absolute;
+                        top: 0;
+                        left: 0;
                     }
                     
-                    /* Hide buttons explicitly */
-                    .action-buttons {
-                        display: none;
+                    /* Ensure graphics are printed */
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
                 }
             `}</style>
@@ -141,10 +167,7 @@ const PrintLabel = () => {
                     className="label-logo" 
                     alt="Minet" 
                     onLoad={() => handleImageLoad('logo')}
-                    onError={(e) => {
-                        console.error('Logo failed to load'); 
-                        handleImageLoad('logo'); // Proceed anyway
-                    }}
+                    onError={() => handleImageError('logo')}
                 />
                 <div className="label-tag">ASSET TAG</div>
                 
@@ -153,6 +176,7 @@ const PrintLabel = () => {
                     className="label-qr" 
                     alt="QR Code" 
                     onLoad={() => handleImageLoad('qr')}
+                    onError={() => handleImageError('qr')}
                 />
                 
                 <div className="label-title">{qrData.device.make} {qrData.device.model}</div>
