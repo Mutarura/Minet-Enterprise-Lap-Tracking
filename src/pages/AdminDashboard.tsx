@@ -245,8 +245,9 @@ const AdminDashboard = () => {
             alert("Error: No label data available. Please regenerate the QR code.");
             return;
         }
-        
-        // Use React Router state for robust data passing
+
+        // Use React Router state for robust data passing, with localStorage backup
+        localStorage.setItem('printLabelData', JSON.stringify(qrData));
         navigate('/print-label', { state: qrData });
     };
 
@@ -544,16 +545,16 @@ const AdminDashboard = () => {
                                             </div>
 
                                             <div>
-                                                <label style={labelStyle}>Employee ID</label>
-                                                <input value={empForm.empId} onChange={e => setEmpForm({ ...empForm, empId: e.target.value })} placeholder="e.g. EMP1001" style={inputStyle} disabled={!!selectedEmployee} required />
+                                                <label htmlFor="emp-form-id" style={labelStyle}>Employee ID</label>
+                                                <input id="emp-form-id" name="empId" value={empForm.empId} onChange={e => setEmpForm({ ...empForm, empId: e.target.value })} placeholder="e.g. EMP1001" style={inputStyle} disabled={!!selectedEmployee} required />
                                             </div>
                                             <div>
-                                                <label style={labelStyle}>Full Name</label>
-                                                <input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} style={inputStyle} required />
+                                                <label htmlFor="emp-form-name" style={labelStyle}>Full Name</label>
+                                                <input id="emp-form-name" name="name" value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} style={inputStyle} required />
                                             </div>
                                             <div>
-                                                <label style={labelStyle}>Department / Floor</label>
-                                                <input value={empForm.departmentOrFloor} onChange={e => setEmpForm({ ...empForm, departmentOrFloor: e.target.value })} placeholder="e.g. IT - Floor 4" style={inputStyle} required />
+                                                <label htmlFor="emp-form-dept" style={labelStyle}>Department / Floor</label>
+                                                <input id="emp-form-dept" name="departmentOrFloor" value={empForm.departmentOrFloor} onChange={e => setEmpForm({ ...empForm, departmentOrFloor: e.target.value })} placeholder="e.g. IT - Floor 4" style={inputStyle} required />
                                             </div>
 
                                             {!isAddingEmployee && (
@@ -712,33 +713,73 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        <div className="no-print button-group">
-              <button className="btn-primary" onClick={handlePrintLabel}><Printer size={18} /> Print Label</button>
-            </div>
+                        <div className="no-print button-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <button
+                                className="btn-primary"
+                                onClick={handlePrintLabel}
+                                style={{ width: '100%', justifyContent: 'center' }}
+                            >
+                                <Printer size={18} /> Print Label
+                            </button>
+                            <button
+                                type="button"
+                                style={{
+                                    padding: '0.75rem',
+                                    background: 'white',
+                                    color: '#0f172a',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    width: '100%',
+                                    fontSize: '0.875rem'
+                                }}
+                                onClick={() => {
+                                    if (!qrData?.url) return;
+                                    const type = qrData.device.type || 'DEVICE';
+                                    const serial = qrData.device.serialNumber || 'UNKNOWN';
+                                    const name = qrData.device.employeeName || 'Unassigned';
+                                    const filename = `${type}-${serial}-${name}.png`.replace(/[^a-z0-9\-\. ]/gi, '_');
+
+                                    const link = document.createElement('a');
+                                    link.href = qrData.url;
+                                    link.download = filename;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                }}
+                            >
+                                ⬇️ Download Image
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <form onSubmit={handleDeviceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                         <div>
-                            <label style={labelStyle}>Serial Number</label>
-                            <input value={devForm.serialNumber} onChange={e => setDevForm({ ...devForm, serialNumber: e.target.value })} placeholder="e.g. MINET-LAP-101" style={inputStyle} required disabled={!!editingDevice} />
+                            <label htmlFor="dev-serial" style={labelStyle}>Serial Number</label>
+                            <input id="dev-serial" name="serialNumber" value={devForm.serialNumber} onChange={e => setDevForm({ ...devForm, serialNumber: e.target.value })} placeholder="e.g. MINET-LAP-101" style={inputStyle} required disabled={!!editingDevice} />
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={labelStyle}>Make</label>
-                                <input value={devForm.make} onChange={e => setDevForm({ ...devForm, make: e.target.value })} placeholder="e.g. Dell" style={inputStyle} required />
+                                <label htmlFor="dev-make" style={labelStyle}>Make</label>
+                                <input id="dev-make" name="make" value={devForm.make} onChange={e => setDevForm({ ...devForm, make: e.target.value })} placeholder="e.g. Dell" style={inputStyle} required />
                             </div>
                             <div>
-                                <label style={labelStyle}>Model</label>
-                                <input value={devForm.model} onChange={e => setDevForm({ ...devForm, model: e.target.value })} placeholder="e.g. XPS 13" style={inputStyle} required />
+                                <label htmlFor="dev-model" style={labelStyle}>Model</label>
+                                <input id="dev-model" name="model" value={devForm.model} onChange={e => setDevForm({ ...devForm, model: e.target.value })} placeholder="e.g. XPS 13" style={inputStyle} required />
                             </div>
                         </div>
                         <div>
-                            <label style={labelStyle}>Color</label>
-                            <input value={devForm.color} onChange={e => setDevForm({ ...devForm, color: e.target.value })} placeholder="e.g. Silver, Space Gray" style={inputStyle} required />
+                            <label htmlFor="dev-color" style={labelStyle}>Color</label>
+                            <input id="dev-color" name="color" value={devForm.color} onChange={e => setDevForm({ ...devForm, color: e.target.value })} placeholder="e.g. Silver, Space Gray" style={inputStyle} required />
                         </div>
                         <div>
-                            <label style={labelStyle}>Assign to Employee (Emp ID)</label>
-                            <select value={devForm.assignedTo || ''} onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })} style={inputStyle} required>
+                            <label htmlFor="dev-assigned" style={labelStyle}>Assign to Employee (Emp ID)</label>
+                            <select id="dev-assigned" name="assignedTo" value={devForm.assignedTo || ''} onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })} style={inputStyle} required>
                                 {employees.map(e => (
                                     <option key={e.id} value={e.empId}>{e.name} ({e.empId})</option>
                                 ))}
@@ -751,20 +792,20 @@ const AdminDashboard = () => {
             <Modal isOpen={showEmpFormModal} onClose={() => { setShowEmpFormModal(false); setIsAddingEmployee(false); }} title="New Employee">
                 <form onSubmit={handleEmployeeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
-                        <label style={labelStyle}>Employee ID</label>
-                        <input value={empForm.empId} onChange={e => setEmpForm({ ...empForm, empId: e.target.value })} style={inputStyle} required />
+                        <label htmlFor="new-emp-id" style={labelStyle}>Employee ID</label>
+                        <input id="new-emp-id" name="empId" value={empForm.empId} onChange={e => setEmpForm({ ...empForm, empId: e.target.value })} style={inputStyle} required />
                     </div>
                     <div>
-                        <label style={labelStyle}>Full Name</label>
-                        <input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} style={inputStyle} required />
+                        <label htmlFor="new-emp-name" style={labelStyle}>Full Name</label>
+                        <input id="new-emp-name" name="name" value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} style={inputStyle} required />
                     </div>
                     <div>
-                        <label style={labelStyle}>Department / Floor</label>
-                        <input value={empForm.departmentOrFloor} onChange={e => setEmpForm({ ...empForm, departmentOrFloor: e.target.value })} style={inputStyle} required />
+                        <label htmlFor="new-emp-dept" style={labelStyle}>Department / Floor</label>
+                        <input id="new-emp-dept" name="departmentOrFloor" value={empForm.departmentOrFloor} onChange={e => setEmpForm({ ...empForm, departmentOrFloor: e.target.value })} style={inputStyle} required />
                     </div>
                     <div>
-                        <label style={labelStyle}>Photo</label>
-                        <input type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files?.[0] || null)} style={inputStyle} />
+                        <label htmlFor="new-emp-photo" style={labelStyle}>Photo</label>
+                        <input id="new-emp-photo" name="photo" type="file" accept="image/*" onChange={e => setPhotoFile(e.target.files?.[0] || null)} style={inputStyle} />
                     </div>
                     <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                         {isSubmitting ? 'Saving...' : 'Save Employee'}
