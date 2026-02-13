@@ -35,13 +35,22 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
             setIsActive(data.isActive !== false);
 
             // Update last login
-            const { serverTimestamp, updateDoc, doc } = await import('firebase/firestore');
-            await updateDoc(doc(db, "users", currentUser.uid), {
+            const { serverTimestamp, updateDoc, doc: fsDoc } = await import('firebase/firestore');
+            await updateDoc(fsDoc(db, "users", currentUser.uid), {
               lastLogin: serverTimestamp()
             });
+          } else if (currentUser.email === 'admin@minet.com') {
+            // Fallback for bootstrap admin
+            setUserRole('superadmin');
+            setIsActive(true);
           }
         } catch (e) {
           console.error("Error fetching role", e);
+          // Fallback on error if it's the main admin
+          if (currentUser.email === 'admin@minet.com') {
+            setUserRole('superadmin');
+            setIsActive(true);
+          }
         }
       }
       setLoading(false);

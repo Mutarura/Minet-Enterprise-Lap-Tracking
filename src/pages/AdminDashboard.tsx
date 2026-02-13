@@ -32,11 +32,11 @@ import {
     UploadCloud,
     AlertTriangle,
     Bell,
+    Shield,
     ShieldCheck,
     UserCheck,
     UserX,
     Key,
-    Shield,
     RefreshCw
 } from 'lucide-react';
 import EmployeeCard from '../components/EmployeeCard';
@@ -135,6 +135,8 @@ const AdminDashboard = () => {
                 if (data.role === 'superadmin') {
                     setActiveTab('users');
                 }
+            } else if (auth.currentUser.email === 'admin@minet.com') {
+                setUserRole('superadmin');
             }
         }
     };
@@ -425,7 +427,7 @@ const AdminDashboard = () => {
                     </button>
                     {userRole === 'superadmin' && (
                         <button onClick={() => handleTabSwitch('users')} style={{ ...(activeTab === 'users' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
-                            <Shield size={16} /> User Management
+                            <Users size={16} /> User Management
                         </button>
                     )}
                 </div>
@@ -746,7 +748,7 @@ const AdminDashboard = () => {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div style={{ display: 'flex', gap: '1rem' }}>
                                             <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-                                                {user.role === 'superadmin' ? <ShieldCheck size={24} /> : user.role === 'admin' ? <Key size={24} /> : <Shield size={24} />}
+                                                {user.role === 'superadmin' ? <ShieldCheck size={24} /> : user.role === 'admin' ? <Key size={24} /> : <Users size={24} />}
                                             </div>
                                             <div>
                                                 <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{user.name}</h4>
@@ -1029,7 +1031,7 @@ const AdminDashboard = () => {
                     </div>
 
                     <div style={{ marginTop: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
-                        <h5 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Shield size={14} /> Permissions</h5>
+                        <h5 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Users size={14} /> Permissions</h5>
                         <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>
                             {userForm.role === 'superadmin' && "Can manage other admins, delete data, and view all system logs."}
                             {userForm.role === 'admin' && "Can manage employees, company/BYOD devices, and view violation reports."}

@@ -19,7 +19,10 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return hasRole('superadmin');
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'superadmin') ||
+        request.auth.token.email == 'admin@minet.com'
+      );
     }
 
     function isAdmin() {
