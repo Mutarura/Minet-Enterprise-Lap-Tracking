@@ -137,9 +137,14 @@ export const addDevice = async (data: {
 
     const devicesSnap = await getDocs(collections.devices);
     const allDevices = devicesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as any);
-    const existing = allDevices.find(d => d.assignedTo === data.assignedTo && d.type === data.type);
-    if (existing) {
-        throw new Error(`This employee already has a ${data.type} device (${existing.serialNumber}). Only one per type is permitted.`);
+    const assignedDevices = allDevices.filter(d => d.assignedTo === data.assignedTo && d.type === data.type);
+
+    if (data.type === 'COMPANY' && assignedDevices.length >= 1) {
+        throw new Error(`This employee already has a COMPANY device (${assignedDevices[0].serialNumber}). Only one per type is permitted.`);
+    }
+
+    if (data.type === 'BYOD' && assignedDevices.length >= 2) {
+        throw new Error(`This employee has reached the maximum allowed BYOD devices (2).`);
     }
 
     await setDoc(doc(db, "devices", data.serialNumber), {
@@ -170,14 +175,18 @@ export const updateDevice = async (serialNumber: string, data: Partial<{
             deviceType = currentDeviceSnap.data()?.type;
         }
 
-        const existing = allDevices.find(d =>
+        const assignedDevices = allDevices.filter(d =>
             d.assignedTo === data.assignedTo &&
             d.type === deviceType &&
-            d.id !== serialNumber // Ensure we're not checking against itself
+            d.id !== serialNumber
         );
 
-        if (existing) {
-            throw new Error(`This employee already has a ${deviceType} device (${existing.serialNumber}).`);
+        if (deviceType === 'COMPANY' && assignedDevices.length >= 1) {
+            throw new Error(`This employee already has a COMPANY device (${assignedDevices[0].serialNumber}).`);
+        }
+
+        if (deviceType === 'BYOD' && assignedDevices.length >= 2) {
+            throw new Error(`This employee has reached the maximum allowed BYOD devices (2).`);
         }
     }
 

@@ -8,6 +8,7 @@ import {
     addDevice,
     updateDevice,
     retireDevice,
+    addLog,
     db,
     auth
 } from '../services/firebase';
@@ -184,26 +185,55 @@ const AdminDashboard = () => {
 
             // ONE LAPTOP RULE: Check if employee already has a device of this type
             if (devForm.assignedTo) {
-                const existing = devices.find(d =>
+                const assignedDevices = devices.filter(d =>
                     d.assignedTo === devForm.assignedTo &&
                     d.type === type &&
                     d.serialNumber !== devForm.serialNumber
                 );
-                if (existing) {
-                    alert(`This employee already has a ${type} laptop assigned (${existing.serialNumber}). Only one per type is permitted.`);
+
+                if (type === 'COMPANY' && assignedDevices.length >= 1) {
+                    alert(`This employee already has a COMPANY laptop assigned (${assignedDevices[0].serialNumber}). Only one per type is permitted.`);
+                    return;
+                }
+
+                if (type === 'BYOD' && assignedDevices.length >= 2) {
+                    alert(`This employee has reached the maximum allowed BYOD devices (2).`);
                     return;
                 }
             }
 
             if (editingDevice) {
                 await updateDevice(editingDevice.serialNumber, { ...devForm, type });
+                alert("Device saved successfully!");
             } else {
                 await addDevice({ ...devForm, type: type as any });
+
+                // AUTO CHECK-IN FOR BYOD
+                if (type === 'BYOD') {
+                    const employee = employees.find(e => e.empId === devForm.assignedTo);
+                    if (employee) {
+                        try {
+                            await addLog({
+                                empId: employee.empId,
+                                employeeName: employee.name,
+                                serialNumber: devForm.serialNumber,
+                                action: 'CHECK_IN'
+                            });
+                            alert("BYOD registered successfully. Device has been checked in.");
+                        } catch (err) {
+                            console.error("Auto check-in failed", err);
+                            alert("Device saved, but auto check-in failed.");
+                        }
+                    } else {
+                        alert("Device saved successfully!");
+                    }
+                } else {
+                    alert("Device saved successfully!");
+                }
             }
             setModalOpen(false);
             loadData();
             resetMobileState(); // Ensure clean slate on mobile
-            alert("Device saved successfully!");
         } catch (err: any) {
             alert("Error: " + err.message);
         }
@@ -453,9 +483,14 @@ const AdminDashboard = () => {
                                                                 </div>
                                                                 <button
                                                                     onClick={async () => {
-                                                                        await updateDevice(dev.serialNumber, { assignedTo: selectedEmployee.empId });
-                                                                        setAssigningType(null);
-                                                                        loadData();
+                                                                        try {
+                                                                            await updateDevice(dev.serialNumber, { assignedTo: selectedEmployee.empId });
+                                                                            setAssigningType(null);
+                                                                            loadData();
+                                                                            alert("Device assigned successfully!");
+                                                                        } catch (err: any) {
+                                                                            alert(err.message);
+                                                                        }
                                                                     }}
                                                                     className="btn-primary"
                                                                     style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
