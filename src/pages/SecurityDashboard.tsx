@@ -489,7 +489,7 @@ const SecurityDashboard = () => {
                         ) : activeTab === 'visitors' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                 {/* Visitor Sub-tabs */}
-                                <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                                <div className="minitab-container" style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
                                     <button
                                         onClick={() => setVisitorTab('visitors')}
                                         style={{
@@ -529,7 +529,7 @@ const SecurityDashboard = () => {
                                 {visitorTab === 'visitors' ? (
                                     <>
                                         {/* Visitor Controls */}
-                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <div className="controls-row" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                                             <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
                                                 <Search size={18} color="#94a3b8" />
                                                 <input
@@ -574,7 +574,7 @@ const SecurityDashboard = () => {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Currently On-Site ({visitors.length})</h3>
                                             {visitors.filter(v => v.name.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
-                                                <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem' }}>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             <h4 style={{ margin: 0 }}>{v.name}</h4>
@@ -619,7 +619,7 @@ const SecurityDashboard = () => {
                                 ) : (
                                     <>
                                         {/* Vendor Controls */}
-                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <div className="controls-row" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                                             <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
                                                 <Search size={18} color="#94a3b8" />
                                                 <input
@@ -646,7 +646,7 @@ const SecurityDashboard = () => {
                                                 </h3>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                                     {vendorVisits.map(v => (
-                                                        <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '4px solid var(--primary)' }}>
+                                                        <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem', borderLeft: '4px solid var(--primary)' }}>
                                                             <div>
                                                                 <h4 style={{ margin: 0 }}>{v.vendorName}</h4>
                                                                 <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
@@ -675,7 +675,7 @@ const SecurityDashboard = () => {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Registered Vendors</h3>
                                             {vendors.filter(v => v.fullName.toLowerCase().includes(searchVisitor.toLowerCase()) || v.company?.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
-                                                <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem' }}>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             <h4 style={{ margin: 0 }}>{v.fullName}</h4>
@@ -683,7 +683,7 @@ const SecurityDashboard = () => {
                                                         </div>
                                                         <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Supplies: {v.supplies}</p>
                                                     </div>
-                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    <div className="visitor-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                                                         <button
                                                             onClick={async () => {
                                                                 if (confirm(`Delete vendor profile for ${v.fullName}?`)) {
