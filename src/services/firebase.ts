@@ -5,13 +5,15 @@ import {
     getDocs,
     getDoc,
     updateDoc,
-    deleteDoc,
     doc,
     Timestamp,
     setDoc,
     query,
     where,
-    serverTimestamp
+    serverTimestamp,
+    orderBy,
+    onSnapshot,
+    deleteDoc
 } from "firebase/firestore";
 // Storage imports removed to bypass billing/bucket requirements
 // import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -25,6 +27,9 @@ export const collections = {
     employees: collection(db, "employees"),
     devices: collection(db, "devices"),
     logs: collection(db, "logs"),
+    visitors: collection(db, "visitors"),
+    vendors: collection(db, "vendors"),
+    vendorVisits: collection(db, "vendorVisits"),
 };
 
 // ============================
@@ -55,7 +60,7 @@ export const addEmployee = async (data: {
 
     if (data.photoFile) {
         try {
-            photoURL = await uploadFile(`employee_photos/${data.empId}_${Date.now()}`, data.photoFile);
+            photoURL = await uploadFile(`employee_photos / ${data.empId}_${Date.now()} `, data.photoFile);
         } catch (storageError) {
             console.error("Storage Error:", storageError);
             throw new Error("PHOTO_UPLOAD_FAILED: Could not save the profile picture. This usually happens if the Firebase Storage 'bucket' is not enabled in the console.");
@@ -83,7 +88,7 @@ export const updateEmployee = async (
 
     // Unique filename to bypass browser cache
     const photoURL = data.photoFile
-        ? await uploadFile(`employee_photos/${existingData?.empId}_${Date.now()}`, data.photoFile)
+        ? await uploadFile(`employee_photos / ${existingData?.empId}_${Date.now()} `, data.photoFile)
         : existingData?.photoURL;
 
     const updatePayload: any = {
@@ -140,11 +145,11 @@ export const addDevice = async (data: {
     const assignedDevices = allDevices.filter(d => d.assignedTo === data.assignedTo && d.type === data.type);
 
     if (data.type === 'COMPANY' && assignedDevices.length >= 1) {
-        throw new Error(`This employee already has a COMPANY device (${assignedDevices[0].serialNumber}). Only one per type is permitted.`);
+        throw new Error(`This employee already has a COMPANY device(${assignedDevices[0].serialNumber}).Only one per type is permitted.`);
     }
 
     if (data.type === 'BYOD' && assignedDevices.length >= 2) {
-        throw new Error(`This employee has reached the maximum allowed BYOD devices (2).`);
+        throw new Error(`This employee has reached the maximum allowed BYOD devices(2).`);
     }
 
     await setDoc(doc(db, "devices", data.serialNumber), {
@@ -182,11 +187,11 @@ export const updateDevice = async (serialNumber: string, data: Partial<{
         );
 
         if (deviceType === 'COMPANY' && assignedDevices.length >= 1) {
-            throw new Error(`This employee already has a COMPANY device (${assignedDevices[0].serialNumber}).`);
+            throw new Error(`This employee already has a COMPANY device(${assignedDevices[0].serialNumber}).`);
         }
 
         if (deviceType === 'BYOD' && assignedDevices.length >= 2) {
-            throw new Error(`This employee has reached the maximum allowed BYOD devices (2).`);
+            throw new Error(`This employee has reached the maximum allowed BYOD devices(2).`);
         }
     }
 
@@ -224,6 +229,256 @@ export const addLog = async (log: {
         updatedAt: Timestamp.now()
     });
 };
+
+// ============================
+// VISITORS & VENDORS LOGIC
+// ============================
+
+// --- VISITORS ---
+
+export const getActiveVisitors = async () => {
+    // Get visitors who are currently Checked IN
+    const q = query(
+        collections.visitors,
+        where("status", "==", "IN"),
+        orderBy("checkInTime", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToActiveVisitors = (callback: (data: any[]) => void) => {
+    const q = query(
+        collections.visitors,
+        where("status", "==", "IN")
+        // orderBy("checkInTime", "desc") // Commented out to prevent index errors
+    );
+    return onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Visitor Subscription Error:", error);
+    });
+};
+
+export const subscribeToTodayVisitors = (callback: (data: any[]) => void) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const q = query(
+        collections.visitors,
+        where("checkInTime", ">=", Timestamp.fromDate(today)),
+        orderBy("checkInTime", "desc")
+    );
+    return onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Today Visitor Subscription Error:", error);
+    });
+};
+
+export const addVisitor = async (data: {
+    type: "QUICK" | "STANDARD";
+    name: string;
+    phone?: string;
+    identifier: string; // Required for both now (ID/Passport)
+    destination?: string; // Standard only
+    reason: string;
+    // New Device Fields (Standard only)
+    deviceType?: string;
+    deviceMakeModel?: string;
+    deviceSerial?: string;
+    deviceColor?: string;
+}) => {
+    // Generate a simple sequential-looking ID using timestamp suffix
+    const visitorId = `VIS - ${Date.now().toString().slice(-6)} `;
+
+    await addDoc(collections.visitors, {
+        visitorId,
+        ...data,
+        status: "IN",
+        checkInTime: Timestamp.now(),
+        checkOutTime: null,
+        handledBy: auth.currentUser?.email || "Security"
+    });
+};
+
+export const seedVisitorsAndVendors = async () => {
+    // 2 Quick Visitors
+    await addVisitor({
+        type: 'QUICK',
+        name: 'John Doe (Delivery)',
+        phone: '0712345678',
+        identifier: 'ID-12345678',
+        reason: 'Water Delivery'
+    });
+    await addVisitor({
+        type: 'QUICK',
+        name: 'Jane Smith (Uber)',
+        phone: '0722334455',
+        identifier: 'ID-87654321',
+        reason: 'Dropping package'
+    });
+
+    // 2 Standard Visitors
+    await addVisitor({
+        type: 'STANDARD',
+        name: 'Michael Ross',
+        phone: '0700112233',
+        identifier: 'P-99887766',
+        reason: 'Client Meeting',
+        destination: 'Legal Dept',
+        deviceType: 'Laptop',
+        deviceMakeModel: 'MacBook Pro',
+        deviceColor: 'Silver',
+        deviceSerial: 'C02XY123Z'
+    });
+    await addVisitor({
+        type: 'STANDARD',
+        name: 'Rachel Zane',
+        phone: '0799887766',
+        identifier: 'ID-11223344',
+        reason: 'Interview',
+        destination: 'HR',
+        deviceType: 'Tablet',
+        deviceMakeModel: 'iPad Air',
+        deviceColor: 'Space Gray'
+    });
+
+    // 2 Vendors
+    await addVendor({
+        fullName: 'TechCorp Solutions',
+        phone: '020-1234567',
+        company: 'TechCorp',
+        supplies: 'IT Maintenance',
+        notes: 'Monthly maintenance visit'
+    });
+    await addVendor({
+        fullName: 'Fresh Catering',
+        phone: '0755555555',
+        company: 'Fresh Foods Ltd',
+        supplies: 'Lunch Catering',
+        notes: 'Daily delivery at 12pm'
+    });
+};
+
+export const checkOutVisitor = async (docId: string) => {
+    const docRef = doc(db, "visitors", docId);
+    await updateDoc(docRef, {
+        status: "OUT",
+        checkOutTime: Timestamp.now(),
+        handledBy: auth.currentUser?.email || "Security" // Update who handled the checkout
+    });
+};
+
+// --- VENDORS ---
+
+export const getVendors = async () => {
+    const snapshot = await getDocs(collections.vendors);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToVendors = (callback: (data: any[]) => void) => {
+    return onSnapshot(collections.vendors, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Vendor Subscription Error:", error);
+    });
+};
+
+export const addVendor = async (data: {
+    fullName: string;
+    phone: string;
+    company?: string;
+    supplies: string;
+    notes?: string;
+}) => {
+    const vendorId = `VEN - ${Date.now().toString().slice(-6)} `;
+    await addDoc(collections.vendors, {
+        vendorId,
+        ...data,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        createdBy: auth.currentUser?.email || "Security"
+    });
+};
+
+export const deleteVendor = async (vendorId: string) => {
+    await deleteDoc(doc(db, "vendors", vendorId));
+};
+
+export const getActiveVendorVisits = async () => {
+    const q = query(
+        collections.vendorVisits,
+        where("status", "==", "IN"),
+        orderBy("checkInTime", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToActiveVendorVisits = (callback: (data: any[]) => void) => {
+    const q = query(
+        collections.vendorVisits,
+        where("status", "==", "IN")
+        // orderBy("checkInTime", "desc") // Commented out to prevent index errors
+    );
+    return onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Vendor Visit Subscription Error:", error);
+    });
+};
+
+export const subscribeToTodayVendorVisits = (callback: (data: any[]) => void) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const q = query(
+        collections.vendorVisits,
+        where("checkInTime", ">=", Timestamp.fromDate(today)),
+        orderBy("checkInTime", "desc")
+    );
+    return onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Today Vendor Visit Subscription Error:", error);
+    });
+};
+
+export const checkInVendor = async (
+    vendorId: string,
+    purpose: string,
+    companyName: string,
+    employeeName: string,
+    employeePhone: string
+) => {
+    // checkInVendor now creates a NEW visit record
+    await addDoc(collections.vendorVisits, {
+        vendorId,
+        vendorName: companyName, // Storing company name as vendorName for backward compatibility in display query or update display logic
+        companyName,
+        visitorName: employeeName,
+        visitorPhone: employeePhone,
+        purpose,
+        status: "IN",
+        checkInTime: Timestamp.now(),
+        checkOutTime: null,
+        handledBy: auth.currentUser?.email || "Security"
+    });
+};
+
+export const checkOutVendorVisit = async (visitId: string) => {
+    const docRef = doc(db, "vendorVisits", visitId);
+    await updateDoc(docRef, {
+        status: "OUT",
+        checkOutTime: Timestamp.now(),
+        handledBy: auth.currentUser?.email || "Security"
+    });
+};
+
 
 /**
  * COMPRESSION HELPER

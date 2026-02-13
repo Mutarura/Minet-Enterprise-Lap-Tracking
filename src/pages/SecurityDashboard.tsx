@@ -5,7 +5,20 @@ import {
     auth,
     getDevices,
     getEmployeeByEmpId,
-    db
+    db,
+    addVisitor,
+    checkOutVisitor,
+    addVendor,
+    checkInVendor,
+    deleteVendor,
+    checkOutVendorVisit,
+    seedVisitorsAndVendors,
+    // New Subscriptions
+    subscribeToActiveVisitors,
+    subscribeToVendors,
+    subscribeToActiveVendorVisits,
+    subscribeToTodayVisitors,
+    subscribeToTodayVendorVisits
 } from '../services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -32,16 +45,23 @@ import {
     Clock,
     Download,
     Calendar,
+    Briefcase,
+    UserPlus,
+    Plus,
     AlertTriangle,
-    Bell
+    Bell,
+    Users,
+    Trash2
 } from 'lucide-react';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
 
 const SecurityDashboard = () => {
-    const [activeTab, setActiveTab] = useState<'scanner' | 'logs' | 'alerts'>('scanner');
+    const [activeTab, setActiveTab] = useState<'scanner' | 'logs' | 'visitors' | 'alerts'>('scanner');
     const [scanState, setScanState] = useState<'idle' | 'reviewing' | 'success'>('idle');
     const [scannedMetadata, setScannedMetadata] = useState<any>(null);
     const [logs, setLogs] = useState<any[]>([]);
+    const [visitorLogs, setVisitorLogs] = useState<any[]>([]);
+    const [vendorLogs, setVendorLogs] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -54,7 +74,36 @@ const SecurityDashboard = () => {
     const [exportDates, setExportDates] = useState({ start: '', end: '' });
     const [exportFilename, setExportFilename] = useState('');
 
-    // MOBILE SESSION MANAGEMENT
+    // VISITOR & VENDOR STATE
+    const [visitorTab, setVisitorTab] = useState<'visitors' | 'vendors'>('visitors');
+    const [visitors, setVisitors] = useState<any[]>([]);
+    const [vendors, setVendors] = useState<any[]>([]);
+    const [vendorVisits, setVendorVisits] = useState<any[]>([]);
+
+    // Forms
+    const [showVisitorModal, setShowVisitorModal] = useState(false);
+    const [visitorType, setVisitorType] = useState<'QUICK' | 'STANDARD'>('QUICK');
+    const [visitorForm, setVisitorForm] = useState({
+        name: '',
+        phone: '',
+        reason: '',
+        identifier: '',
+        destination: '',
+        // Standard Device Details
+        deviceType: '',
+        deviceMakeModel: '',
+        deviceSerial: '',
+        deviceColor: ''
+    });
+
+    const [showVendorModal, setShowVendorModal] = useState(false);
+    const [vendorForm, setVendorForm] = useState({ company: '', phone: '', supplies: '', notes: '' });
+
+    const [showVendorCheckInModal, setShowVendorCheckInModal] = useState(false);
+    const [selectedVendor, setSelectedVendor] = useState<any>(null);
+    const [vendorCheckInForm, setVendorCheckInForm] = useState({ purpose: '', employeeName: '', employeePhone: '' });
+
+    const [searchVisitor, setSearchVisitor] = useState('');
     const resetMobileState = () => {
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
             setScanState('idle');
@@ -73,25 +122,68 @@ const SecurityDashboard = () => {
     // const navigate = useNavigate();
 
     useEffect(() => {
-        // Fetch Today's Logs
+        // Consolidated Log Subscription
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const q = query(
+        // Logs (Devices)
+        const qLogs = query(
             collections.logs,
             where("timestamp", ">=", Timestamp.fromDate(today)),
             orderBy("timestamp", "desc"),
             limit(50)
         );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
             setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        // Visitor Logs (Today)
+        const unsubscribeVisitorLogs = subscribeToTodayVisitors((data) => {
+            setVisitorLogs(data);
+        });
+
+        // Vendor Logs (Today)
+        const unsubscribeVendorLogs = subscribeToTodayVendorVisits((data) => {
+            setVendorLogs(data);
         });
 
         loadAlerts();
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribeLogs();
+            unsubscribeVisitorLogs();
+            unsubscribeVendorLogs();
+        };
     }, []);
+
+    useEffect(() => {
+        let unsubscribeVisitors = () => { };
+        let unsubscribeVendors = () => { };
+        let unsubscribeVendorVisits = () => { };
+
+        if (activeTab === 'visitors') {
+            if (visitorTab === 'visitors') {
+                unsubscribeVisitors = subscribeToActiveVisitors((data) => {
+                    setVisitors(data);
+                });
+            } else {
+                unsubscribeVendors = subscribeToVendors((data) => {
+                    setVendors(data);
+                });
+                unsubscribeVendorVisits = subscribeToActiveVendorVisits((data) => {
+                    setVendorVisits(data);
+                });
+            }
+        }
+
+        return () => {
+            unsubscribeVisitors();
+            unsubscribeVendors();
+            unsubscribeVendorVisits();
+        };
+    }, [activeTab, visitorTab]);
+
+    // Removed loadVisitorData as subscriptions handle updates automatically
 
     const loadAlerts = async () => {
         setAlertsLoading(true);
@@ -163,7 +255,7 @@ const SecurityDashboard = () => {
     const handleExportCSV = async () => {
         if (!exportDates.start || !exportDates.end) {
             alert("Please select both start and end dates.");
-            return; // Added return to prevent further execution
+            return;
         }
 
         try {
@@ -171,28 +263,85 @@ const SecurityDashboard = () => {
             const end = new Date(exportDates.end);
             end.setHours(23, 59, 59);
 
-            const q = query(
+            // 1. Fetch Device Logs
+            const qLogs = query(
                 collections.logs,
                 where("timestamp", ">=", Timestamp.fromDate(start)),
                 where("timestamp", "<=", Timestamp.fromDate(end)),
                 orderBy("timestamp", "desc")
             );
+            const snapsLogs = await getDocs(qLogs);
+            const logsData = snapsLogs.docs.map(d => ({ ...d.data(), type: 'DEVICE', sortTime: d.data().timestamp.toDate().getTime() }));
 
-            const snapshot = await getDocs(q);
-            const data = snapshot.docs.map(doc => doc.data());
+            // 2. Fetch Visitor Logs (using checkInTime)
+            const qVisitors = query(
+                collections.visitors,
+                where("checkInTime", ">=", Timestamp.fromDate(start)),
+                where("checkInTime", "<=", Timestamp.fromDate(end))
+            );
+            const snapsVisitors = await getDocs(qVisitors);
+            const visitorsData = snapsVisitors.docs.map(d => ({ ...d.data(), type: 'VISITOR', sortTime: d.data().checkInTime.toDate().getTime() }));
 
-            if (data.length === 0) {
+            // 3. Fetch Vendor Visits
+            const qVendors = query(
+                collections.vendorVisits,
+                where("checkInTime", ">=", Timestamp.fromDate(start)),
+                where("checkInTime", "<=", Timestamp.fromDate(end))
+            );
+            const snapsVendors = await getDocs(qVendors);
+            const vendorsData = snapsVendors.docs.map(d => ({ ...d.data(), type: 'VENDOR', sortTime: d.data().checkInTime.toDate().getTime() }));
+
+            const allData = [...logsData, ...visitorsData, ...vendorsData].sort((a: any, b: any) => b.sortTime - a.sortTime);
+
+            if (allData.length === 0) {
                 alert("No logs found for the selected range.");
                 return;
             }
 
             // Generate CSV content
-            const headers = ["Timestamp", "Action", "Employee ID", "Employee Name", "Serial Number"];
+            const headers = ["Timestamp", "Type", "Name/Company", "ID / Contact", "Action/Status", "Details", "Device S/N"];
             const csvRows = [
                 headers.join(","),
-                ...data.map(row => {
-                    const ts = row.timestamp.toDate().toLocaleString();
-                    return `"${ts}","${row.action}","${row.empId}","${row.employeeName}","${row.serialNumber}"`;
+                ...allData.map((row: any) => {
+                    const ts = new Date(row.sortTime).toLocaleString();
+                    let type = row.type;
+                    let name = '';
+                    let id = '';
+                    let action = '';
+                    let details = '';
+                    let sn = '';
+
+                    if (type === 'DEVICE') {
+                        type = 'EMPLOYEE';
+                        name = row.employeeName;
+                        id = row.empId;
+                        action = row.action;
+                        sn = row.serialNumber;
+                    } else if (type === 'VISITOR') {
+                        name = row.name;
+                        id = row.identifier || row.phone;
+                        action = row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT';
+                        details = `${row.type} - ${row.reason}`;
+                        sn = row.deviceSerial || '';
+                    } else if (type === 'VENDOR') {
+                        name = row.vendorName; // Company
+                        id = row.visitorName ? `${row.visitorName} (${row.visitorPhone})` : 'N/A';
+                        action = row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT';
+                        details = row.purpose;
+                    }
+
+                    // Escape quotes
+                    const escape = (str: string) => `"${str ? str.toString().replace(/"/g, '""') : ''}"`;
+
+                    return [
+                        escape(ts),
+                        escape(type),
+                        escape(name),
+                        escape(id),
+                        escape(action),
+                        escape(details),
+                        escape(sn)
+                    ].join(",");
                 })
             ];
 
@@ -200,7 +349,7 @@ const SecurityDashboard = () => {
             const url = window.URL.createObjectURL(csvBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${exportFilename || 'Minet_Logs'}_${exportDates.start}_to_${exportDates.end}.csv`;
+            a.download = `${exportFilename || 'Minet_Master_Logs'}_${exportDates.start}_to_${exportDates.end}.csv`;
             a.click();
             setShowExportModal(false);
         } catch (err) {
@@ -217,17 +366,17 @@ const SecurityDashboard = () => {
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '5rem', display: 'flex', flexDirection: 'column' }}>
             {/* Professional Header */}
-            <header style={{ 
-                background: 'white', 
-                padding: '1.25rem 2rem', 
-                borderBottom: '1px solid #e2e8f0', 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                position: 'sticky', 
-                top: 0, 
-                zIndex: 100, 
-                boxShadow: '0 2px 4px rgba(0,0,0,0.02)' 
+            <header style={{
+                background: 'white',
+                padding: '1.25rem 2rem',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'sticky',
+                top: 0,
+                zIndex: 100,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
             }}>
                 <div>
                     <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--secondary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
@@ -243,11 +392,11 @@ const SecurityDashboard = () => {
                         <Download size={18} />
                     </button>
                     <button
-                        onClick={async () => { 
-                            if (confirm('Logout?')) { 
-                                await signOut(auth); 
+                        onClick={async () => {
+                            if (confirm('Logout?')) {
+                                await signOut(auth);
                                 window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
-                            } 
+                            }
                         }}
                         style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', cursor: 'pointer', color: 'var(--secondary)' }}
                         title="Logout"
@@ -261,33 +410,19 @@ const SecurityDashboard = () => {
                 {scanState === 'idle' && (
                     <>
                         <div className="tabs-container" style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-sm)', padding: '4px', marginBottom: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
-                            <button onClick={() => handleTabSwitch('scanner')} style={{ ... (activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('scanner')} style={{ ...(activeTab === 'scanner' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
                                 <ScanLine size={16} /> Scanner
                             </button>
-                            <button onClick={() => handleTabSwitch('logs')} style={{ ... (activeTab === 'logs' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('logs')} style={{ ...(activeTab === 'logs' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
                                 <ListFilter size={16} /> Activities
                             </button>
-                            <button onClick={() => handleTabSwitch('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b' } : inactiveTabStyle), position: 'relative', flex: 1, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleTabSwitch('visitors')} style={{ ...(activeTab === 'visitors' ? activeTabStyle : inactiveTabStyle), flex: 1, whiteSpace: 'nowrap' }}>
+                                <Users size={16} /> Visitors
+                            </button>
+                            <button onClick={() => handleTabSwitch('alerts')} style={{ ...(activeTab === 'alerts' ? { ...activeTabStyle, background: '#f59e0b', boxShadow: '0 4px 6px rgba(245, 158, 11, 0.2)' } : inactiveTabStyle), position: 'relative', flex: 1, whiteSpace: 'nowrap' }}>
                                 <Bell size={16} /> Alerts
                                 {!alertsLoading && alerts.length > 0 && (
-                                    <span style={{
-                                        position: 'absolute',
-                                        top: '-4px',
-                                        right: '-4px',
-                                        background: 'var(--primary)',
-                                        color: 'white',
-                                        borderRadius: '50%',
-                                        minWidth: '18px',
-                                        height: '18px',
-                                        fontSize: '0.65rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '2px solid white',
-                                        fontWeight: '800'
-                                    }}>
-                                        {alerts.length}
-                                    </span>
+                                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', minWidth: '18px', height: '18px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid white', fontWeight: '800', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>{alerts.length}</span>
                                 )}
                             </button>
                         </div>
@@ -351,6 +486,297 @@ const SecurityDashboard = () => {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        ) : activeTab === 'visitors' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                {/* Visitor Sub-tabs */}
+                                <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
+                                    <button
+                                        onClick={() => setVisitorTab('visitors')}
+                                        style={{
+                                            padding: '0.5rem 1rem',
+                                            background: visitorTab === 'visitors' ? 'white' : 'transparent',
+                                            fontWeight: '700',
+                                            color: visitorTab === 'visitors' ? 'var(--primary)' : '#94a3b8',
+                                            border: 'none',
+                                            borderBottom: visitorTab === 'visitors' ? '2px solid var(--primary)' : '2px solid transparent',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <Users size={16} /> Visitors
+                                    </button>
+                                    <button
+                                        onClick={() => setVisitorTab('vendors')}
+                                        style={{
+                                            padding: '0.5rem 1rem',
+                                            background: visitorTab === 'vendors' ? 'white' : 'transparent',
+                                            fontWeight: '700',
+                                            color: visitorTab === 'vendors' ? 'var(--primary)' : '#94a3b8',
+                                            border: 'none',
+                                            borderBottom: visitorTab === 'vendors' ? '2px solid var(--primary)' : '2px solid transparent',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <Briefcase size={16} /> Vendors
+                                    </button>
+                                </div>
+
+                                {visitorTab === 'visitors' ? (
+                                    <>
+                                        {/* Visitor Controls */}
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                            <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
+                                                <Search size={18} color="#94a3b8" />
+                                                <input
+                                                    placeholder="Search visitors..."
+                                                    value={searchVisitor}
+                                                    onChange={e => setSearchVisitor(e.target.value)}
+                                                    style={{ border: 'none', padding: '0.75rem', width: '100%', outline: 'none', background: 'transparent' }}
+                                                />
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={() => {
+                                                        setVisitorType('QUICK');
+                                                        setVisitorForm({
+                                                            name: '', phone: '', reason: '', identifier: '', destination: '',
+                                                            deviceType: '', deviceMakeModel: '', deviceSerial: '', deviceColor: ''
+                                                        });
+                                                        setShowVisitorModal(true);
+                                                    }}
+                                                    className="btn-primary"
+                                                    style={{ padding: '0.6rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                                                >
+                                                    ⚡ Quick
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setVisitorType('STANDARD');
+                                                        setVisitorForm({
+                                                            name: '', phone: '', reason: '', identifier: '', destination: '',
+                                                            deviceType: '', deviceMakeModel: '', deviceSerial: '', deviceColor: ''
+                                                        });
+                                                        setShowVisitorModal(true);
+                                                    }}
+                                                    style={{ ...btnActionStyle, padding: '0.6rem 1rem', fontSize: '0.8rem', background: 'white', border: '1px solid #cbd5e1', color: 'var(--secondary)', boxShadow: 'none', whiteSpace: 'nowrap' }}
+                                                >
+                                                    <UserPlus size={16} /> Standard
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Active Visitors List */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Currently On-Site ({visitors.length})</h3>
+                                            {visitors.filter(v => v.name.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
+                                                <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <h4 style={{ margin: 0 }}>{v.name}</h4>
+                                                            <span style={{ fontSize: '0.7rem', background: v.type === 'QUICK' ? '#f1f5f9' : '#e0f2fe', color: v.type === 'QUICK' ? '#64748b' : '#0284c7', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>{v.type}</span>
+                                                        </div>
+                                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                                                            <span style={{ fontWeight: '700', marginRight: '6px' }}>{v.identifier}</span>
+                                                            {v.type === 'QUICK' ? `• ${v.reason}` : `• Visiting: ${v.destination}`}
+                                                        </p>
+                                                        {v.deviceType ? (
+                                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', background: '#f8fafc', padding: '0.4rem', borderRadius: '4px', border: '1px dashed #cbd5e1' }}>
+                                                                <u style={{ textDecoration: 'none', fontWeight: '700', color: '#475569' }}>Asset declared:</u> {v.deviceType} - {v.deviceMakeModel} {v.deviceSerial ? `(S/N: ${v.deviceSerial})` : ''}
+                                                            </div>
+                                                        ) : v.type === 'STANDARD' && (
+                                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                                                No Asset Declared
+                                                            </div>
+                                                        )}
+                                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>Since {v.checkInTime?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (confirm(`Check out ${v.name}?`)) {
+                                                                await checkOutVisitor(v.id);
+                                                                // automated update via subscription
+                                                            }
+                                                        }}
+                                                        style={{ background: '#fee2e2', color: 'var(--danger)', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer' }}
+                                                    >
+                                                        Check Out
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {visitors.length === 0 && (
+                                                <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                                                    <Users size={32} opacity={0.3} style={{ marginBottom: '1rem' }} />
+                                                    <p>No visitors currently checked in.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Vendor Controls */}
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                            <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1rem' }}>
+                                                <Search size={18} color="#94a3b8" />
+                                                <input
+                                                    placeholder="Search vendors..."
+                                                    value={searchVisitor}
+                                                    onChange={e => setSearchVisitor(e.target.value)}
+                                                    style={{ border: 'none', padding: '0.75rem', width: '100%', outline: 'none', background: 'transparent' }}
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => { setVendorForm({ fullName: '', phone: '', company: '', supplies: '', notes: '' }); setShowVendorModal(true); }}
+                                                className="btn-primary"
+                                                style={{ padding: '0.6rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                                            >
+                                                <Plus size={16} /> New Vendor
+                                            </button>
+                                        </div>
+
+                                        {/* Active Vendor Visits */}
+                                        {vendorVisits.length > 0 && (
+                                            <div style={{ marginBottom: '1.5rem' }}>
+                                                <h3 style={{ fontSize: '0.9rem', color: 'var(--primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <ScanLine size={14} /> Active Vendor Visits
+                                                </h3>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                    {vendorVisits.map(v => (
+                                                        <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '4px solid var(--primary)' }}>
+                                                            <div>
+                                                                <h4 style={{ margin: 0 }}>{v.vendorName}</h4>
+                                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                                                                    <span style={{ fontWeight: '700' }}>{v.visitorName}</span> • {v.purpose}
+                                                                </p>
+                                                                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>In since {v.checkInTime?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                            </div>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (confirm(`Check out ${v.vendorName}?`)) {
+                                                                        await checkOutVendorVisit(v.id);
+                                                                        // automated update via subscription
+                                                                    }
+                                                                }}
+                                                                style={{ background: 'white', border: '1px solid #e2e8f0', color: 'var(--secondary)', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer' }}
+                                                            >
+                                                                Out
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Registered Vendors List */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Registered Vendors</h3>
+                                            {vendors.filter(v => v.fullName.toLowerCase().includes(searchVisitor.toLowerCase()) || v.company?.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
+                                                <div key={v.id} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <h4 style={{ margin: 0 }}>{v.fullName}</h4>
+                                                            {v.company && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>@ {v.company}</span>}
+                                                        </div>
+                                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Supplies: {v.supplies}</p>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (confirm(`Delete vendor profile for ${v.fullName}?`)) {
+                                                                    await deleteVendor(v.id);
+                                                                }
+                                                            }}
+                                                            className="btn-danger"
+                                                            style={{ padding: '0.5rem', fontSize: '0.8rem', background: '#fee2e2', color: 'var(--danger)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                                            title="Delete Vendor Profile"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedVendor(v);
+                                                                setVendorCheckInForm({ purpose: '', employeeName: '', employeePhone: '' });
+                                                                setShowVendorCheckInModal(true);
+                                                            }}
+                                                            className="btn-primary"
+                                                            style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                                                        >
+                                                            Check In
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ) : activeTab === 'logs' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1rem', color: '#64748b' }}>Today's Activities</h3>
+                                    <h3 style={{ margin: 0, fontSize: '1rem', color: '#64748b' }}>Today's Activities</h3>
+                                    {/* Export button removed as requested */}
+                                </div>
+                                {[
+                                    ...logs.map(l => ({ ...l, sortTime: l.timestamp?.toDate().getTime() || 0, type: 'DEVICE' })),
+                                    ...visitorLogs.map(v => ({ ...v, sortTime: v.checkInTime?.toDate().getTime() || 0, type: 'VISITOR' })),
+                                    ...vendorLogs.map(v => ({ ...v, sortTime: v.checkInTime?.toDate().getTime() || 0, type: 'VENDOR' }))
+                                ].sort((a, b) => b.sortTime - a.sortTime).map((item, idx) => (
+                                    <div key={`${item.type}-${item.id}-${idx}`} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${item.type === 'DEVICE' ? (item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)') : (item.status === 'IN' ? '#10b981' : '#64748b')}` }}>
+                                        <div>
+                                            {item.type === 'DEVICE' ? (
+                                                <>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ fontWeight: '800', color: item.action === 'CHECK_IN' ? '#166534' : '#991b1b', fontSize: '0.75rem', background: item.action === 'CHECK_IN' ? '#dcfce7' : '#fee2e2', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            EMPLOYEE
+                                                        </span>
+                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.employeeName}</span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                                                        <span style={{ fontWeight: '700', color: item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)', marginRight: '6px' }}>
+                                                            {item.action === 'CHECK_IN' ? 'IN' : 'OUT'}
+                                                        </span>
+                                                        Device: {item.serialNumber}
+                                                    </div>
+                                                </>
+                                            ) : item.type === 'VISITOR' ? (
+                                                <>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ fontWeight: '800', color: 'var(--secondary)', fontSize: '0.75rem', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            VISITOR
+                                                        </span>
+                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.name}</span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>({item.type /* QUICK/STANDARD */})</span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                                                        {item.reason} {item.status === 'OUT' ? '(Checked Out)' : ''}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ fontWeight: '800', color: '#b45309', fontSize: '0.75rem', background: '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>
+                                                            VENDOR
+                                                        </span>
+                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.vendorName}</span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+                                                        {item.purpose} {item.status === 'OUT' ? '(Checked Out)' : ''}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        <div style={{ textAlign: 'right', fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <Clock size={14} />
+                                            {new Date(item.sortTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -536,6 +962,247 @@ const SecurityDashboard = () => {
                         }}
                     >
                         <Download size={20} /> DOWNLOAD CSV LOGS
+                    </button>
+                </div>
+            </Modal>
+
+            {/* NEW VISITOR MODAL */}
+            <Modal isOpen={showVisitorModal} onClose={() => setShowVisitorModal(false)} title={`New ${visitorType} Visitor`}>
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!visitorForm.name || !visitorForm.reason) return alert("Name and Reason are required.");
+
+                    // Validation for Quick Visitors
+                    if (visitorType === 'QUICK' && !visitorForm.identifier) {
+                        return alert("National ID or Passport No. is required for Quick Visitors.");
+                    }
+
+                    await addVisitor({
+                        type: visitorType,
+                        name: visitorForm.name,
+                        phone: visitorForm.phone,
+                        identifier: visitorForm.identifier,
+                        destination: visitorForm.destination,
+                        reason: visitorForm.reason,
+                        deviceType: visitorForm.deviceType,
+                        deviceMakeModel: visitorForm.deviceMakeModel,
+                        deviceSerial: visitorForm.deviceSerial,
+                        deviceColor: visitorForm.deviceColor
+                    });
+                    setShowVisitorModal(false);
+                    // loadVisitorData(); // handled by subscription
+                    alert("Visitor checked in successfully.");
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                    <div>
+                        <label style={labelStyle}>Full Name</label>
+                        <input value={visitorForm.name} onChange={e => setVisitorForm({ ...visitorForm, name: e.target.value })} style={inputStyle} required />
+                    </div>
+
+                    {/* ID Field - Required for Both now */}
+                    <div>
+                        <label style={labelStyle}>National ID (or Passport No.) {visitorType === 'QUICK' && '*'}</label>
+                        <input
+                            value={visitorForm.identifier}
+                            onChange={e => setVisitorForm({ ...visitorForm, identifier: e.target.value })}
+                            style={inputStyle}
+                            placeholder="e.g. ID-12345678"
+                            required={visitorType === 'QUICK'}
+                        />
+                    </div>
+
+                    {visitorType === 'STANDARD' ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div>
+                                <label style={labelStyle}>Phone Number</label>
+                                <input value={visitorForm.phone} onChange={e => setVisitorForm({ ...visitorForm, phone: e.target.value })} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Person / Office Visiting</label>
+                                <input value={visitorForm.destination} onChange={e => setVisitorForm({ ...visitorForm, destination: e.target.value })} style={inputStyle} required />
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <label style={labelStyle}>Phone (Optional)</label>
+                            <input value={visitorForm.phone} onChange={e => setVisitorForm({ ...visitorForm, phone: e.target.value })} style={inputStyle} />
+                        </div>
+                    )}
+
+                    <div>
+                        <label style={labelStyle}>Reason for Visit</label>
+                        <input value={visitorForm.reason} onChange={e => setVisitorForm({ ...visitorForm, reason: e.target.value })} style={inputStyle} placeholder="e.g. Delivery, Meeting, Interview" required />
+                    </div>
+
+                    {visitorType === 'STANDARD' && (
+                        <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}>
+                            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Briefcase size={16} /> Asset Declaration (Optional)
+                            </h4>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={labelStyle}>Device Type</label>
+                                    <input
+                                        value={visitorForm.deviceType}
+                                        onChange={e => setVisitorForm({ ...visitorForm, deviceType: e.target.value })}
+                                        style={inputStyle}
+                                        placeholder="Laptop, Tablet..."
+                                    />
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={labelStyle}>Make / Model</label>
+                                        <input
+                                            value={visitorForm.deviceMakeModel}
+                                            onChange={e => setVisitorForm({ ...visitorForm, deviceMakeModel: e.target.value })}
+                                            style={inputStyle}
+                                            placeholder="e.g. Dell XPS"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Color</label>
+                                        <input
+                                            value={visitorForm.deviceColor}
+                                            onChange={e => setVisitorForm({ ...visitorForm, deviceColor: e.target.value })}
+                                            style={inputStyle}
+                                            placeholder="e.g. Silver"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Serial Number (Optional)</label>
+                                    <input
+                                        value={visitorForm.deviceSerial}
+                                        onChange={e => setVisitorForm({ ...visitorForm, deviceSerial: e.target.value })}
+                                        style={inputStyle}
+                                        placeholder="e.g. ABC-123-XYZ"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>Check In Visitor</button>
+                    {/* SEED BUTTON FOR DEV */}
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            if (confirm("Populate with test data?")) {
+                                await seedVisitorsAndVendors();
+                                // loadVisitorData(); // handled by subscription
+                                alert("Seeded!");
+                            }
+                        }}
+                        style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '0.75rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px' }}
+                    >
+                        [DEV] Seed Test Data
+                    </button>
+                </form>
+            </Modal>
+
+            {/* NEW VENDOR MODAL */}
+            <Modal isOpen={showVendorModal} onClose={() => setShowVendorModal(false)} title="Register New Vendor">
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!vendorForm.fullName || !vendorForm.phone) return alert("Company Name and Phone are required.");
+                    await addVendor({
+                        ...vendorForm,
+                        company: vendorForm.fullName // Use same value for consistency
+                    });
+                    setShowVendorModal(false);
+                    alert("Vendor registered.");
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                        <label style={labelStyle}>Vendor Company Name</label>
+                        <input
+                            value={vendorForm.fullName}
+                            onChange={e => setVendorForm({ ...vendorForm, fullName: e.target.value, company: e.target.value })}
+                            style={inputStyle}
+                            placeholder="e.g. TechCorp Solutions"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Company Phone Contacts</label>
+                        <input
+                            value={vendorForm.phone}
+                            onChange={e => setVendorForm({ ...vendorForm, phone: e.target.value })}
+                            style={inputStyle}
+                            placeholder="e.g. 020-XXXXXXX"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Supplies / Service</label>
+                        <input value={vendorForm.supplies} onChange={e => setVendorForm({ ...vendorForm, supplies: e.target.value })} style={inputStyle} placeholder="e.g. Water, Catering" required />
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Notes</label>
+                        <input value={vendorForm.notes} onChange={e => setVendorForm({ ...vendorForm, notes: e.target.value })} style={inputStyle} />
+                    </div>
+                    <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>Create Profile</button>
+                </form>
+            </Modal>
+
+            {/* VENDOR CHECK-IN MODAL */}
+            <Modal isOpen={showVendorCheckInModal} onClose={() => setShowVendorCheckInModal(false)} title="Vendor Check-In">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+                        <h3 style={{ margin: '0 0 0.5rem 0' }}>{selectedVendor?.fullName}</h3>
+                        <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>{selectedVendor?.company}</p>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>{selectedVendor?.supplies}</p>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div>
+                            <label style={labelStyle}>Employee Name (Visitor)</label>
+                            <input
+                                value={vendorCheckInForm.employeeName}
+                                onChange={e => setVendorCheckInForm({ ...vendorCheckInForm, employeeName: e.target.value })}
+                                style={inputStyle}
+                                placeholder="e.g. John Doe"
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label style={labelStyle}>Phone Number</label>
+                            <input
+                                value={vendorCheckInForm.employeePhone}
+                                onChange={e => setVendorCheckInForm({ ...vendorCheckInForm, employeePhone: e.target.value })}
+                                style={inputStyle}
+                                placeholder="07XX XXX XXX"
+                            />
+                        </div>
+                        <div>
+                            <label style={labelStyle}>Purpose of Visit</label>
+                            <input
+                                value={vendorCheckInForm.purpose}
+                                onChange={e => setVendorCheckInForm({ ...vendorCheckInForm, purpose: e.target.value })}
+                                style={inputStyle}
+                                placeholder="e.g. Weekly Delivery, Maintenance"
+                            />
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={async () => {
+                            if (!vendorCheckInForm.purpose || !vendorCheckInForm.employeeName) return alert("Name and Purpose are required.");
+                            await checkInVendor(
+                                selectedVendor.id,
+                                vendorCheckInForm.purpose,
+                                selectedVendor.fullName, // Company Name
+                                vendorCheckInForm.employeeName,
+                                vendorCheckInForm.employeePhone
+                            );
+                            setShowVendorCheckInModal(false);
+                            // loadVisitorData(); // handled by subscription
+                            alert("Vendor checked in.");
+                        }}
+                        className="btn-primary"
+                        style={{ marginTop: '0.5rem' }}
+                    >
+                        Confirm Check-In
                     </button>
                 </div>
             </Modal>
