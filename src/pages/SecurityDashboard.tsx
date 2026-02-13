@@ -12,7 +12,6 @@ import {
     checkInVendor,
     deleteVendor,
     checkOutVendorVisit,
-    seedVisitorsAndVendors,
     // New Subscriptions
     subscribeToActiveVisitors,
     subscribeToVendors,
@@ -631,7 +630,7 @@ const SecurityDashboard = () => {
                                                 />
                                             </div>
                                             <button
-                                                onClick={() => { setVendorForm({ fullName: '', phone: '', company: '', supplies: '', notes: '' }); setShowVendorModal(true); }}
+                                                onClick={() => { setVendorForm({ company: '', phone: '', supplies: '', notes: '' }); setShowVendorModal(true); }}
                                                 className="btn-primary"
                                                 style={{ padding: '0.6rem 1rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                                             >
@@ -1085,19 +1084,7 @@ const SecurityDashboard = () => {
 
                     <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>Check In Visitor</button>
                     {/* SEED BUTTON FOR DEV */}
-                    <button
-                        type="button"
-                        onClick={async () => {
-                            if (confirm("Populate with test data?")) {
-                                await seedVisitorsAndVendors();
-                                // loadVisitorData(); // handled by subscription
-                                alert("Seeded!");
-                            }
-                        }}
-                        style={{ marginTop: '0.5rem', background: 'transparent', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '0.75rem', padding: '0.5rem', cursor: 'pointer', borderRadius: '4px' }}
-                    >
-                        [DEV] Seed Test Data
-                    </button>
+
                 </form>
             </Modal>
 
@@ -1105,10 +1092,10 @@ const SecurityDashboard = () => {
             <Modal isOpen={showVendorModal} onClose={() => setShowVendorModal(false)} title="Register New Vendor">
                 <form onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!vendorForm.fullName || !vendorForm.phone) return alert("Company Name and Phone are required.");
+                    if (!vendorForm.company || !vendorForm.phone) return alert("Company Name and Phone are required.");
                     await addVendor({
                         ...vendorForm,
-                        company: vendorForm.fullName // Use same value for consistency
+                        fullName: vendorForm.company, // Map company to fullName as required by backend
                     });
                     setShowVendorModal(false);
                     alert("Vendor registered.");
@@ -1116,8 +1103,8 @@ const SecurityDashboard = () => {
                     <div>
                         <label style={labelStyle}>Vendor Company Name</label>
                         <input
-                            value={vendorForm.fullName}
-                            onChange={e => setVendorForm({ ...vendorForm, fullName: e.target.value, company: e.target.value })}
+                            value={vendorForm.company}
+                            onChange={e => setVendorForm({ ...vendorForm, company: e.target.value })}
                             style={inputStyle}
                             placeholder="e.g. TechCorp Solutions"
                             required

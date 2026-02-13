@@ -303,64 +303,7 @@ export const addVisitor = async (data: {
     });
 };
 
-export const seedVisitorsAndVendors = async () => {
-    // 2 Quick Visitors
-    await addVisitor({
-        type: 'QUICK',
-        name: 'John Doe (Delivery)',
-        phone: '0712345678',
-        identifier: 'ID-12345678',
-        reason: 'Water Delivery'
-    });
-    await addVisitor({
-        type: 'QUICK',
-        name: 'Jane Smith (Uber)',
-        phone: '0722334455',
-        identifier: 'ID-87654321',
-        reason: 'Dropping package'
-    });
 
-    // 2 Standard Visitors
-    await addVisitor({
-        type: 'STANDARD',
-        name: 'Michael Ross',
-        phone: '0700112233',
-        identifier: 'P-99887766',
-        reason: 'Client Meeting',
-        destination: 'Legal Dept',
-        deviceType: 'Laptop',
-        deviceMakeModel: 'MacBook Pro',
-        deviceColor: 'Silver',
-        deviceSerial: 'C02XY123Z'
-    });
-    await addVisitor({
-        type: 'STANDARD',
-        name: 'Rachel Zane',
-        phone: '0799887766',
-        identifier: 'ID-11223344',
-        reason: 'Interview',
-        destination: 'HR',
-        deviceType: 'Tablet',
-        deviceMakeModel: 'iPad Air',
-        deviceColor: 'Space Gray'
-    });
-
-    // 2 Vendors
-    await addVendor({
-        fullName: 'TechCorp Solutions',
-        phone: '020-1234567',
-        company: 'TechCorp',
-        supplies: 'IT Maintenance',
-        notes: 'Monthly maintenance visit'
-    });
-    await addVendor({
-        fullName: 'Fresh Catering',
-        phone: '0755555555',
-        company: 'Fresh Foods Ltd',
-        supplies: 'Lunch Catering',
-        notes: 'Daily delivery at 12pm'
-    });
-};
 
 export const checkOutVisitor = async (docId: string) => {
     const docRef = doc(db, "visitors", docId);
