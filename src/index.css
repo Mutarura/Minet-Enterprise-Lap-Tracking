@@ -205,7 +205,8 @@ select:focus {
 
   /* Grid layouts become single column on mobile */
   .device-grid,
-  .alert-grid {
+  .alert-grid,
+  .user-grid {
     grid-template-columns: 1fr !important;
   }
 
@@ -224,7 +225,7 @@ select:focus {
     width: 100%;
   }
 
-  /* Modal adjustments */
+  .glass-card,
   .modal-content {
     padding: 1.5rem !important;
     margin: 1rem !important;

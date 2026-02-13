@@ -50,7 +50,8 @@ import {
     AlertTriangle,
     Bell,
     Users,
-    Trash2
+    Trash2,
+    ShieldCheck
 } from 'lucide-react';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
 
@@ -63,6 +64,7 @@ const SecurityDashboard = () => {
     const [vendorLogs, setVendorLogs] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
 
     // Alerts State
     const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -147,6 +149,7 @@ const SecurityDashboard = () => {
         });
 
         loadAlerts();
+        checkProfile();
 
         return () => {
             unsubscribeLogs();
@@ -154,6 +157,15 @@ const SecurityDashboard = () => {
             unsubscribeVendorLogs();
         };
     }, []);
+
+    const checkProfile = async () => {
+        if (auth.currentUser) {
+            const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+            if (userDoc.exists()) {
+                setCurrentUserProfile(userDoc.data());
+            }
+        }
+    };
 
     useEffect(() => {
         let unsubscribeVisitors = () => { };
@@ -379,7 +391,9 @@ const SecurityDashboard = () => {
             }}>
                 <div>
                     <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--secondary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>SECURITY DASHBOARD</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '4px' }}>
+                        <ShieldCheck size={14} color="var(--primary)" /> HELLO {currentUserProfile?.name || 'SECURITY'}
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>

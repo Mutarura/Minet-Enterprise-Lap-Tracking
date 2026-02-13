@@ -15,10 +15,12 @@ import LandingPage from './pages/LandingPage';
 import ITLogin from './pages/ITLogin';
 import SecurityLogin from './pages/SecurityLogin';
 import PrintLabel from './pages/PrintLabel';
+import ActivateAccount from './pages/ActivateAccount';
 
-const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' }) => {
+const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' | 'superadmin' }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,7 +30,15 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
         try {
           const userDoc = await getDoc(doc(db, "users", currentUser.uid));
           if (userDoc.exists()) {
-            setUserRole(userDoc.data().role);
+            const data = userDoc.data();
+            setUserRole(data.role);
+            setIsActive(data.isActive !== false);
+
+            // Update last login
+            const { serverTimestamp, updateDoc, doc } = await import('firebase/firestore');
+            await updateDoc(doc(db, "users", currentUser.uid), {
+              lastLogin: serverTimestamp()
+            });
           }
         } catch (e) {
           console.error("Error fetching role", e);
@@ -40,18 +50,35 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
   }, []);
 
   if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-      <p style={{ fontWeight: '600', color: 'var(--text-muted)' }}>Authenticating...</p>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc', textAlign: 'center', padding: '2rem' }}>
+      <p style={{ fontWeight: '600', color: 'var(--text-muted)', fontSize: '1.1rem' }}>We are getting your Dashboard ready for you. 😊</p>
     </div>
   );
 
   if (!user) {
-    // Correctly redirect to the specific login page using Navigate
-    const loginPath = role === 'admin' ? '/login/it' : '/login/security';
+    const loginPath = (role === 'security') ? '/login/security' : '/login/it';
     return <Navigate to={loginPath} replace />;
   }
 
-  if (userRole !== role) {
+  if (!isActive) {
+    return (
+      <div className="container" style={{ textAlign: 'center', marginTop: '4rem' }}>
+        <h2>Account Disabled</h2>
+        <p>Your account has been deactivated. Please contact the administrator.</p>
+        <button onClick={() => auth.signOut()} className="btn-primary" style={{ marginTop: '1rem' }}>Logout</button>
+      </div>
+    );
+  }
+
+  // Strict Role separation:
+  // - superadmin can access 'admin' (SuperAdmin Dashboard)
+  // - admin can access 'admin' (Restricted IT Dashboard)
+  // - security can access 'security' (Security Dashboard)
+  const hasAccess =
+    (role === 'admin' && (userRole === 'superadmin' || userRole === 'admin')) ||
+    (role === 'security' && userRole === 'security');
+
+  if (!hasAccess) {
     return (
       <div className="container" style={{ textAlign: 'center', marginTop: '4rem' }}>
         <h2>Unauthorized Access</h2>
@@ -74,6 +101,7 @@ function App() {
         <Route path="/dashboard/it" element={<ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>} />
         <Route path="/dashboard/security" element={<ProtectedRoute role="security"><SecurityDashboard /></ProtectedRoute>} />
         <Route path="/print-label" element={<PrintLabel />} />
+        <Route path="/activate" element={<ActivateAccount />} />
         {/* Fill in legacy routes for redirection if needed, or remove them */}
         <Route path="/admin" element={<Link to="/dashboard/it" replace />} />
         <Route path="/security" element={<Link to="/dashboard/security" replace />} />

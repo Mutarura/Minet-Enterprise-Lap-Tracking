@@ -10,7 +10,11 @@ import {
     retireDevice,
     addLog,
     db,
-    auth
+    auth,
+    subscribeToSystemUsers,
+    createSystemUser,
+    updateSystemUser,
+    resetUserPassword
 } from '../services/firebase';
 import { signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
@@ -27,7 +31,13 @@ import {
     LogOut,
     UploadCloud,
     AlertTriangle,
-    Bell
+    Bell,
+    ShieldCheck,
+    UserCheck,
+    UserX,
+    Key,
+    Shield,
+    RefreshCw
 } from 'lucide-react';
 import EmployeeCard from '../components/EmployeeCard';
 import DeviceCard from '../components/DeviceCard';
@@ -36,14 +46,20 @@ import Modal from '../components/Modal';
 import { generateQRCode } from '../utils/qr';
 import { doc, updateDoc } from 'firebase/firestore';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
+import { CheckCircle2 } from 'lucide-react';
 
 const AdminDashboard = () => {
-    const [activeTab, setActiveTab] = useState<'employees' | 'company' | 'byod' | 'alerts'>('employees');
+    const [activeTab, setActiveTab] = useState<'employees' | 'company' | 'byod' | 'alerts' | 'users'>('employees');
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+    const [systemUsers, setSystemUsers] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
     const [devices, setDevices] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, tempPassword: string } | null>(null);
 
     const navigate = useNavigate();
 
@@ -66,6 +82,9 @@ const AdminDashboard = () => {
     const [assigningType, setAssigningType] = useState<'COMPANY' | 'BYOD' | null>(null);
     const [assignSearch, setAssignSearch] = useState('');
     const [showEmpFormModal, setShowEmpFormModal] = useState(false);
+    const [showUserModal, setShowUserModal] = useState(false);
+    const [userForm, setUserForm] = useState({ name: '', role: 'admin' as any });
+    const [editingUser, setEditingUser] = useState<any>(null);
     const [detailsHighlight, setDetailsHighlight] = useState(false);
     const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -92,7 +111,33 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         loadData();
-    }, []);
+        checkRole();
+
+        let unsubUsers = () => { };
+        if (activeTab === 'users') {
+            unsubUsers = subscribeToSystemUsers((data) => {
+                setSystemUsers(data);
+            });
+        }
+        return () => unsubUsers();
+    }, [activeTab]);
+
+    const checkRole = async () => {
+        if (auth.currentUser) {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+            if (userDoc.exists()) {
+                const data = userDoc.data();
+                setUserRole(data.role);
+                setCurrentUserProfile(data);
+
+                // If they are a superadmin, default their view to User Management
+                if (data.role === 'superadmin') {
+                    setActiveTab('users');
+                }
+            }
+        }
+    };
 
 
     const loadData = async (refreshAlerts = false) => {
@@ -297,10 +342,23 @@ const AdminDashboard = () => {
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
-            <header style={{ background: 'white', padding: '1.25rem 2rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+            <header style={{
+                background: 'white',
+                padding: '1.25rem 2rem',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                position: 'sticky',
+                top: 0,
+                zIndex: 100,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+            }}>
                 <div>
                     <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--primary)', lineHeight: 1.1 }}>Minet Laptop Tracking System</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '2px' }}>ADMIN DASHBOARD</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Shield size={14} /> IT ADMIN DASHBOARD | HELLO {currentUserProfile?.name || 'ADMIN'}
+                    </div>
                 </div>
 
                 <button
@@ -365,6 +423,11 @@ const AdminDashboard = () => {
                             </span>
                         )}
                     </button>
+                    {userRole === 'superadmin' && (
+                        <button onClick={() => handleTabSwitch('users')} style={{ ...(activeTab === 'users' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                            <Shield size={16} /> User Management
+                        </button>
+                    )}
                 </div>
 
                 {activeTab === 'employees' ? (
@@ -650,6 +713,106 @@ const AdminDashboard = () => {
                             )}
                         </aside>
                     </div>
+                ) : activeTab === 'users' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                                <div className="glass-card" style={{ flex: 1, maxWidth: '500px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                                    <Search size={20} color="#94a3b8" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search users..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
+                                    />
+                                </div>
+                                <button onClick={() => {
+                                    setEditingUser(null);
+                                    setUserForm({ name: '', role: 'admin' });
+                                    setShowUserModal(true);
+                                }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <Plus size={20} /> Create User
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="user-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                            {systemUsers.filter(u =>
+                                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase()))
+                            ).map(user => (
+                                <div key={user.id} className="glass-card" style={{ padding: '1.5rem', opacity: user.isActive === false ? 0.6 : 1, borderLeft: `4px solid ${user.role === 'superadmin' ? '#7c3aed' : user.role === 'admin' ? 'var(--primary)' : '#64748b'}` }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ display: 'flex', gap: '1rem' }}>
+                                            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                                {user.role === 'superadmin' ? <ShieldCheck size={24} /> : user.role === 'admin' ? <Key size={24} /> : <Shield size={24} />}
+                                            </div>
+                                            <div>
+                                                <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{user.name}</h4>
+                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Username: <strong>{user.username || 'N/A'}</strong></p>
+                                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>{user.email}</p>
+                                                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: '800', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '4px', background: '#f1f5f9' }}>{user.role}</span>
+                                                    {user.isActive === false && <span style={{ fontSize: '0.7rem', fontWeight: '800', background: '#fee2e2', color: 'var(--danger)', padding: '2px 8px', borderRadius: '4px' }}>DISABLED</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                            <button
+                                                onClick={() => {
+                                                    setEditingUser(user);
+                                                    setUserForm({ name: user.name, role: user.role });
+                                                    setShowUserModal(true);
+                                                }}
+                                                style={{ background: 'white', border: '1px solid #e2e8f0', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer' }}
+                                                title="Edit User"
+                                            >
+                                                ⚙️
+                                            </button>
+                                            {userRole === 'superadmin' && (
+                                                <button
+                                                    onClick={async () => {
+                                                        if (confirm(`Reset password for ${user.name}? This will enforce a new temporary password.`)) {
+                                                            try {
+                                                                const newTemp = await resetUserPassword(user.id);
+                                                                setNewAccountInfo({ username: user.username, tempPassword: newTemp });
+                                                                setUserForm({ name: user.name, role: user.role }); // Ensure userForm.name is correct for modal
+                                                                setShowSuccessModal(true);
+                                                            } catch (err: any) {
+                                                                alert(err.message);
+                                                            }
+                                                        }
+                                                    }}
+                                                    style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', color: '#92400e' }}
+                                                    title="Renew Password"
+                                                >
+                                                    <RefreshCw size={18} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={async () => {
+                                                    if (confirm(`${user.isActive === false ? 'Enable' : 'Disable'} account for ${user.name}?`)) {
+                                                        await updateSystemUser(user.id, { isActive: user.isActive === false });
+                                                    }
+                                                }}
+                                                style={{ background: user.isActive === false ? '#dcfce7' : '#fee2e2', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', color: user.isActive === false ? '#166534' : 'var(--danger)' }}
+                                                title={user.isActive === false ? 'Enable' : 'Disable'}
+                                            >
+                                                {user.isActive === false ? <UserCheck size={18} /> : <UserX size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: '1.25rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span>Created {user.createdAt?.toDate().toLocaleDateString()} by {user.createdBy}</span>
+                                            <span>Last: {user.lastLogin ? user.lastLogin.toDate().toLocaleString() : 'Never'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 ) : activeTab === 'alerts' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '1.5rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -824,6 +987,99 @@ const AdminDashboard = () => {
                     </form>
                 )}
             </Modal>
+            {/* User Management Modal */}
+            <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title={editingUser ? 'Edit System User' : 'Create System User'}>
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setIsSubmitting(true);
+                    try {
+                        if (editingUser) {
+                            await updateSystemUser(editingUser.id, {
+                                name: userForm.name,
+                                role: userForm.role
+                            });
+                            alert("User updated successfully");
+                        } else {
+                            const result = await createSystemUser({
+                                name: userForm.name,
+                                role: userForm.role
+                            });
+                            setNewAccountInfo(result);
+                            setShowSuccessModal(true);
+                        }
+                        setShowUserModal(false);
+                    } catch (err: any) {
+                        alert(err.message);
+                    } finally {
+                        setIsSubmitting(false);
+                    }
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div>
+                        <label style={labelStyle}>Full Name</label>
+                        <input value={userForm.name} onChange={e => setUserForm({ ...userForm, name: e.target.value })} style={inputStyle} required />
+                    </div>
+
+                    <div>
+                        <label style={labelStyle}>System Role</label>
+                        <select value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value as any })} style={inputStyle}>
+                            <option value="admin">Admin (Internal Ops)</option>
+                            <option value="security">Security (Gate Ops)</option>
+                            <option value="superadmin">Super Admin (Full Access)</option>
+                        </select>
+                    </div>
+
+                    <div style={{ marginTop: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
+                        <h5 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Shield size={14} /> Permissions</h5>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>
+                            {userForm.role === 'superadmin' && "Can manage other admins, delete data, and view all system logs."}
+                            {userForm.role === 'admin' && "Can manage employees, company/BYOD devices, and view violation reports."}
+                            {userForm.role === 'security' && "Can manage visitors, vendor check-ins, and standard device logging."}
+                        </p>
+                    </div>
+
+                    {!editingUser && (
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600' }}>
+                            * Username and temporary password will be auto-generated.
+                        </p>
+                    )}
+
+                    <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ marginTop: '1rem' }}>
+                        {isSubmitting ? 'Processing...' : editingUser ? 'Save Changes' : 'Create User Account'}
+                    </button>
+                </form>
+            </Modal>
+
+            {/* Account Creation Success Modal */}
+            <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Account Created Successfully">
+                <div style={{ textAlign: 'center', padding: '1rem' }}>
+                    <div style={{ color: '#10b981', marginBottom: '1.5rem' }}>
+                        <CheckCircle2 size={64} style={{ margin: '0 auto' }} />
+                    </div>
+                    <p style={{ color: '#475569', fontSize: '0.95rem', marginBottom: '1.5rem' }}>
+                        The account for <strong>{userForm.name}</strong> has been created. Please share these temporary credentials with them.
+                    </p>
+
+                    <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0', textAlign: 'left', marginBottom: '2rem' }}>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Username</label>
+                            <p style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: '700', color: 'var(--secondary)' }}>{newAccountInfo?.username}</p>
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Temporary Password</label>
+                            <p style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', fontFamily: 'monospace' }}>{newAccountInfo?.tempPassword}</p>
+                        </div>
+                    </div>
+
+                    <p style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', marginBottom: '1.5rem' }}>
+                        Note: The user will be required to change this password upon their first activation.
+                    </p>
+
+                    <button onClick={() => setShowSuccessModal(false)} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+                        Done
+                    </button>
+                </div>
+            </Modal>
+
             <Modal isOpen={showEmpFormModal} onClose={() => { setShowEmpFormModal(false); setIsAddingEmployee(false); }} title="New Employee">
                 <form onSubmit={handleEmployeeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>

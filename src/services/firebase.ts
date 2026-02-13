@@ -1,4 +1,5 @@
-import { db, storage, auth } from "../firebase";
+import { db, storage, auth, secondaryAuth } from "../firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import {
     collection,
     addDoc,
@@ -30,6 +31,8 @@ export const collections = {
     visitors: collection(db, "visitors"),
     vendors: collection(db, "vendors"),
     vendorVisits: collection(db, "vendorVisits"),
+    users: collection(db, "users"),
+    auditLogs: collection(db, "auditLogs"),
 };
 
 // ============================
@@ -299,7 +302,7 @@ export const addVisitor = async (data: {
         status: "IN",
         checkInTime: Timestamp.now(),
         checkOutTime: null,
-        handledBy: auth.currentUser?.email || "Security"
+        handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
 };
 
@@ -310,7 +313,7 @@ export const checkOutVisitor = async (docId: string) => {
     await updateDoc(docRef, {
         status: "OUT",
         checkOutTime: Timestamp.now(),
-        handledBy: auth.currentUser?.email || "Security" // Update who handled the checkout
+        handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security" // Update who handled the checkout
     });
 };
 
@@ -343,7 +346,7 @@ export const addVendor = async (data: {
         ...data,
         isActive: true,
         createdAt: Timestamp.now(),
-        createdBy: auth.currentUser?.email || "Security"
+        createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
 };
 
@@ -409,7 +412,7 @@ export const checkInVendor = async (
         status: "IN",
         checkInTime: Timestamp.now(),
         checkOutTime: null,
-        handledBy: auth.currentUser?.email || "Security"
+        handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
 };
 
@@ -418,10 +421,149 @@ export const checkOutVendorVisit = async (visitId: string) => {
     await updateDoc(docRef, {
         status: "OUT",
         checkOutTime: Timestamp.now(),
-        handledBy: auth.currentUser?.email || "Security"
+        handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
 };
 
+
+// ============================
+// ROLE & USER MANAGEMENT
+// ============================
+
+export const addAuditLog = async (action: string, targetId: string, details: any) => {
+    await addDoc(collections.auditLogs, {
+        action,
+        targetId,
+        details,
+        performedBy: auth.currentUser?.displayName || auth.currentUser?.email || "Unknown",
+        timestamp: serverTimestamp()
+    });
+};
+
+export const generateUsername = async (fullName: string) => {
+    const parts = fullName.trim().split(" ");
+    const firstName = parts[0];
+    const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
+
+    // Logic: SecondName + FirstLetterOfFirstName
+    let baseUsername = (lastName + (firstName ? firstName[0] : "")).replace(/[^a-zA-Z0-9]/g, "");
+
+    // Ensure uniqueness
+    let username = baseUsername;
+    let counter = 1;
+    let exists = true;
+
+    while (exists) {
+        const q = query(collections.users, where("username", "==", username));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+            exists = false;
+        } else {
+            username = baseUsername + counter;
+            counter++;
+        }
+    }
+
+    return username;
+};
+
+export const createSystemUser = async (data: {
+    name: string;
+    role: "superadmin" | "admin" | "security";
+}) => {
+    try {
+        // 1. Generate Username
+        const username = await generateUsername(data.name);
+        const email = `${username.toLowerCase()}@minet.tracking`;
+        const tempPassword = Math.random().toString(36).slice(-10); // Random temp password
+
+        // 2. Create in Firebase Auth using the secondary auth instance
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+        const uid = userCredential.user.uid;
+
+        // 3. Create profile in Firestore
+        await setDoc(doc(db, "users", uid), {
+            uid,
+            name: data.name,
+            username: username,
+            email: email, // used internally for auth
+            role: data.role,
+            mustChangePassword: true,
+            tempPassword: tempPassword, // Stored temporarily for activation
+            createdAt: serverTimestamp(),
+            createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "System",
+            isActive: true,
+            lastLogin: null
+        });
+
+        // 4. Audit log
+        await addAuditLog("CREATE_USER", uid, { username, role: data.role });
+
+        return { uid, username, tempPassword };
+    } catch (error: any) {
+        console.error("Error creating user:", error);
+        throw error;
+    }
+};
+
+export const activateUserAccount = async (username: string) => {
+    // 1. Find user by username
+    const q = query(collections.users, where("username", "==", username));
+    const snap = await getDocs(q);
+
+    if (snap.empty) throw new Error("Username not found");
+    const userDoc = snap.docs[0];
+    const userData = userDoc.data();
+
+    if (!userData.mustChangePassword) throw new Error("Account already active. Please log in.");
+    if (!userData.isActive) throw new Error("Account is disabled. Contact Admin.");
+
+    // Return credentials needed for activation sign-in
+    return { email: userData.email, tempPassword: userData.tempPassword, uid: userDoc.id };
+};
+
+export const updateSystemUser = async (uid: string, data: {
+    role?: "superadmin" | "admin" | "security";
+    isActive?: boolean;
+    name?: string;
+}) => {
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
+    });
+
+    await addAuditLog("UPDATE_USER", uid, data);
+};
+
+export const resetUserPassword = async (uid: string) => {
+    const tempPassword = Math.random().toString(36).slice(-10);
+    const userRef = doc(db, "users", uid);
+
+    await updateDoc(userRef, {
+        tempPassword: tempPassword,
+        mustChangePassword: true,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
+    });
+
+    await addAuditLog("RESET_PASSWORD", uid, { action: "FORCED_TEMP_PASSWORD" });
+
+    return tempPassword;
+};
+
+export const getSystemUsers = async () => {
+    const snapshot = await getDocs(collections.users);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToSystemUsers = (callback: (data: any[]) => void) => {
+    return onSnapshot(collections.users, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    });
+};
 
 /**
  * COMPRESSION HELPER

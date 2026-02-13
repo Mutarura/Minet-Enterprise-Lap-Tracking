@@ -1,8 +1,89 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // Helper: Is the user authenticated?
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Get user data from Firestore
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: Role checks
+    function hasRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+
+    function isSuperAdmin() {
+      return hasRole('superadmin');
+    }
+
+    function isAdmin() {
+      return hasRole('admin') || isSuperAdmin();
+    }
+
+    function isSecurity() {
+      return hasRole('security') || isAdmin();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true; // Allowed for username-based email lookup
+      
+      // Only Superadmin can create or update users
+      allow create: if isSuperAdmin();
+      
+      allow update: if isSuperAdmin() 
+        // Block privilege escalation (cannot create another superadmin if they aren't one)
+        // AND block self-deletion/disabling if it's the last superadmin (client side check usually but here we just restrict update)
+        && (request.resource.data.role == resource.data.role || isSuperAdmin());
+      
+      allow delete: if isSuperAdmin() && request.auth.uid != userId; // Block self deletion
+    }
+
+    // Employees Collection
+    match /employees/{empId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Devices Collection
+    match /devices/{serial} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isSecurity();
+    }
+
+    // Logs, Visitors, Vendors
+    match /logs/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSecurity();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /visitors/{id} {
+      allow read: if isSignedIn();
+      allow write: if isSecurity();
+    }
+
+    match /vendors/{id} {
+      allow read: if isSignedIn();
+      allow write: if isSecurity();
+    }
+
+    match /vendorVisits/{id} {
+      allow read: if isSignedIn();
+      allow write: if isSecurity();
+    }
+
+    // Audit Logs
+    match /auditLogs/{id} {
+      allow read: if isSuperAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Audit logs are immutable
     }
   }
 }

@@ -1,10 +1,10 @@
 import { db, auth } from "../services/firebase";
 import { doc, setDoc, addDoc, collection, Timestamp, query, where, getDocs, deleteDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 
 const seedUsers = async () => {
     const users = [
-        { username: 'admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'admin' },
+        { username: 'admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' },
         { username: 'security', email: 'security@minet.com', password: 'GateSecure1!', role: 'security' }
     ];
 
@@ -18,22 +18,15 @@ const seedUsers = async () => {
                 console.log(`Created new auth user: ${user.email}`);
             } catch (authError) {
                 if (authError.code === 'auth/email-already-in-use') {
-                    // If user exists, we MUST still ensure their Firestore doc is present
-                    // We can't get UID easily without login, so we'll just sign in to get the UID
-                    try {
-                        const signinCredential = await signInWithEmailAndPassword(auth, user.email, user.password);
-                        uid = signinCredential.user.uid;
-                        console.log(`User already exists, retrieved UID via login: ${uid}`);
-                    } catch (signinError) {
-                        console.error(`Failed to retrieve existing user UID: ${signinError.message}`);
-                        continue; // Skip this one
-                    }
+                    // Just catch it, we'll try to update Firestore if we have a session
+                    // Note: Cannot get UID without login or admin SDK
+                    console.log(`User ${user.email} already exists in Auth.`);
                 } else {
                     throw authError;
                 }
             }
 
-            // Always write/overwrite the Firestore metadata
+            // If we have a UID (new user), or if we are the current user, update Firestore
             if (uid) {
                 await setDoc(doc(db, "users", uid), {
                     username: user.username,
@@ -46,6 +39,39 @@ const seedUsers = async () => {
         } catch (error) {
             console.error(`Unexpected error seeding user ${user.email}:`, error.message);
         }
+    }
+};
+
+/**
+ * Specifically just creates the Super Admin if they don't exist.
+ * Safe to call even if the DB rules are slightly restrictive for cleaning.
+ */
+export const bootstrapAdmin = async () => {
+    console.log("Bootstrapping Admin...");
+    try {
+        const admin = { username: 'admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' };
+
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, admin.email, admin.password);
+            const uid = userCredential.user.uid;
+            await setDoc(doc(db, "users", uid), {
+                username: admin.username,
+                email: admin.email,
+                role: admin.role,
+                isActive: true,
+                updatedAt: Timestamp.now()
+            });
+            console.log("Admin bootstrapped successfully with UID: " + uid);
+        } catch (e) {
+            if (e.code === 'auth/email-already-in-use') {
+                console.log("Admin account already exists in Auth.");
+            } else {
+                throw e;
+            }
+        }
+    } catch (error) {
+        console.error("Bootstrap error:", error);
+        throw error;
     }
 };
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
@@ -18,31 +17,61 @@ const ITLogin = () => {
         setError('');
         setLoading(true);
 
-        const cleanUsername = username.trim().toLowerCase();
-        // Professional fallback: Map 'admin' username to core email directly
-        const email = cleanUsername === 'admin' ? 'admin@minet.com' : `${cleanUsername}@minet.com`;
+        const cleanUsername = username.trim();
+        const isAdminShortcut = cleanUsername.toLowerCase() === 'admin';
+        let email = '';
 
         try {
+            // 1. Handle Admin Shortcut directly to bypass permission issues
+            if (isAdminShortcut) {
+                email = 'admin@minet.com';
+            } else {
+                // For other users, we MUST lookup the email in Firestore
+                const { query, where, getDocs, collection } = await import('firebase/firestore');
+                const q = query(collection(db, "users"), where("username", "==", cleanUsername));
+                const snap = await getDocs(q);
+
+                if (!snap.empty) {
+                    const userData = snap.docs[0].data();
+                    email = userData.email;
+                    if (!userData.isActive) throw new Error("ACCOUNT_DISABLED");
+                } else {
+                    throw new Error("USER_NOT_FOUND");
+                }
+            }
+
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-            // Self-Healing: Ensure the Firestore role document exists for this default account
-            const userDocRef = doc(db, "users", userCredential.user.uid);
-            const userDocSnap = await getDoc(userDocRef);
+            // Healing: Ensure the 'Admin' user document exists and has the 'superadmin' role
+            if (isAdminShortcut) {
+                const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+                // Use UID for the document ID, NOT the email
+                const userRef = doc(db, "users", userCredential.user.uid);
 
-            if (!userDocSnap.exists()) {
-                console.log("Healing missing admin record...");
-                await setDoc(userDocRef, {
-                    username: 'admin',
-                    email: 'admin@minet.com',
-                    role: 'admin',
-                    createdAt: Timestamp.now()
-                });
+                // Update or create the profile with correct role and UID mapping
+                await setDoc(userRef, {
+                    uid: userCredential.user.uid,
+                    username: 'Admin',
+                    name: 'System Super Admin',
+                    email: email,
+                    role: 'superadmin',
+                    isActive: true,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
             }
 
             navigate('/dashboard/it');
         } catch (err: any) {
             console.error("Login Check:", err.code, err.message);
-            setError('Invalid username or password.');
+            if (err.message === "ACCOUNT_DISABLED") {
+                setError('This account has been deactivated. Please contact support.');
+            } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                setError('Invalid password. Please check your credentials.');
+            } else if (err.code === 'auth/user-not-found') {
+                setError('Staff account not found. Please contact the Super Admin.');
+            } else {
+                setError(err.message || 'Invalid username or password.');
+            }
         } finally {
             setLoading(false);
         }
@@ -144,6 +173,36 @@ const ITLogin = () => {
                             {loading ? 'Verifying...' : 'LOGIN TO INVENTORY'}
                         </button>
                     </form>
+
+                    <div style={{ marginTop: '1.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <button
+                            onClick={() => navigate('/activate')}
+                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            New account? Set password
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                if (confirm("Initialize Superadmin credentials? This is only for first-time setup or recovery.")) {
+                                    setLoading(true);
+                                    try {
+                                        // @ts-ignore
+                                        const { bootstrapAdmin } = await import('../utils/seedData');
+                                        await bootstrapAdmin();
+                                        alert("System admin initialized. Try logging in now.");
+                                    } catch (e: any) {
+                                        alert(e.message);
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.7rem', cursor: 'pointer' }}
+                        >
+                            Initial setup / Restore Admin
+                        </button>
+                    </div>
                 </div>
             </div>
             <p style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>

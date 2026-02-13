@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
@@ -18,27 +17,19 @@ const SecurityLogin = () => {
         setError('');
         setLoading(true);
 
-        const cleanUsername = username.trim().toLowerCase();
-        // Professional fallback: Map 'security' username to core email directly
-        const email = cleanUsername === 'security' ? 'security@minet.com' : `${cleanUsername}@minet.com`;
+        const cleanUsername = username.trim();
+        let email = '';
 
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-            // Self-Healing: Ensure the Firestore role document exists for this default account
-            const userDocRef = doc(db, "users", userCredential.user.uid);
-            const userDocSnap = await getDoc(userDocRef);
-
-            if (!userDocSnap.exists()) {
-                console.log("Healing missing security record...");
-                await setDoc(userDocRef, {
-                    username: 'security',
-                    email: 'security@minet.com',
-                    role: 'security',
-                    createdAt: Timestamp.now()
-                });
+            const { query, where, getDocs, collection } = await import('firebase/firestore');
+            const q = query(collection(db, "users"), where("username", "==", cleanUsername));
+            const snap = await getDocs(q);
+            if (snap.empty) {
+                throw new Error("USER_NOT_FOUND");
             }
+            email = snap.docs[0].data().email;
 
+            await signInWithEmailAndPassword(auth, email, password);
             navigate('/dashboard/security');
         } catch (err: any) {
             console.error("Login Error:", err.code, err.message);
@@ -149,6 +140,15 @@ const SecurityLogin = () => {
                             {loading ? 'Authenticating...' : 'COMMENCE WATCH'}
                         </button>
                     </form>
+
+                    <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                        <button
+                            onClick={() => navigate('/activate')}
+                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
+                        >
+                            New account? Set password
+                        </button>
+                    </div>
                 </div>
             </div>
             <p style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
