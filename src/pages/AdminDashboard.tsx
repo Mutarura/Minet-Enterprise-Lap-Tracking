@@ -910,27 +910,14 @@ const AdminDashboard = () => {
                                             {userRole === 'superadmin' && (
                                                 <button
                                                     onClick={async () => {
-                                                        const confirmMsg = `Are you sure you want to RENEW the password for ${user.name}?\n\nThis will invalidate their current password and issue a new temporary one.`;
+                                                        const confirmMsg = `Are you sure you want to trigger a password reset for ${user.name}?\n\nThis will send an official Minet Security email to ${user.email} with a link to set a new password.`;
                                                         if (confirm(confirmMsg)) {
                                                             try {
                                                                 const { renewUserPassword } = await import('../services/firebase');
-                                                                const newTemp = await renewUserPassword(user.id);
-
-                                                                // Re-use the success modal logic to show the new temp password
-                                                                setNewAccountInfo({
-                                                                    username: user.username,
-                                                                    tempPassword: newTemp
-                                                                });
-                                                                setShowSuccessModal(true);
-
-                                                                await logSystemEvent(
-                                                                    { type: 'PASSWORD_RESET_INITIATED', category: 'AUTH' },
-                                                                    { id: user.id, type: 'USER', metadata: { username: user.username } },
-                                                                    'SUCCESS',
-                                                                    `Set up / Renew password renewal triggered by Superadmin`
-                                                                );
+                                                                await renewUserPassword(user.id);
+                                                                alert("Password reset email sent successfully!");
                                                             } catch (err: any) {
-                                                                alert("Renewal failed: " + err.message);
+                                                                alert("Failed to send reset email: " + err.message);
                                                             }
                                                         }
                                                     }}

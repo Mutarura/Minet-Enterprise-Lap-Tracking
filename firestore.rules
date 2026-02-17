@@ -96,7 +96,7 @@ service cloud.firestore {
     // Audit Logs
     match /auditLogs/{id} {
       allow read: if isSuperAdmin();
-      allow create: if isSignedIn();
+      allow create: if true; // Allow creation even during activation (before full sign-in)
       allow update, delete: if false; // Audit logs are immutable
     }
   }

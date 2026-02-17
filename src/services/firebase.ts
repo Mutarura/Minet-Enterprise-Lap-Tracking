@@ -914,16 +914,12 @@ export const deleteSystemUser = async (uid: string) => {
     );
 };
 
-export const renewUserPassword = async (uid: string): Promise<string> => {
+export const renewUserPassword = async (uid: string) => {
     // This function is called by Superadmin when a user forgets their password
-    // It generates a NEW temporary password, updates Firebase Auth, and sets renewal flags
-
-    const { generateSecureTempPassword, hashPassword } = await import('../utils/passwordUtils');
-    const newTempPassword = generateSecureTempPassword();
-    const hashedTempPassword = hashPassword(newTempPassword);
+    // IMPORTANT: Firebase Client SDK cannot FORCE a password change for another user.
+    // We trigger a Password Reset Email which is the secure, standard way for renewals.
 
     try {
-        // Get user data
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
 
@@ -934,36 +930,26 @@ export const renewUserPassword = async (uid: string): Promise<string> => {
         const userData = userSnap.data();
         const email = userData.email;
 
-        // Update Firestore with new temp password and renewal flags
+        const { sendPasswordResetEmail } = await import('firebase/auth');
+        await sendPasswordResetEmail(auth, email);
+
+        // Update Firestore to track that a reset was initiated
         await updateDoc(userRef, {
-            passwordResetRequired: true, // NEW: Flag that password reset is required
-            mustSetPassword: false, // This is a renewal, not first-time setup
-            tempPasswordHash: hashedTempPassword,
-            tempPasswordIssuedAt: serverTimestamp(),
+            passwordResetRequired: true,
             updatedAt: serverTimestamp(),
             updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
         });
 
-        // CRITICAL: Update Firebase Auth password
-        // We need to use Admin SDK or a cloud function for this in production
-        // For now, we'll document that the user must use the temp password
-        console.warn(`Password renewal: User ${email} must use temp password: ${newTempPassword}`);
-
         await logSystemEvent(
-            { type: 'RESET_PASSWORD', category: 'AUTH' },
+            { type: 'PASSWORD_RESET_INITIATED', category: 'AUTH' },
             { id: uid, type: 'USER', metadata: { username: userData.username } },
             'SUCCESS',
-            'Password renewal initiated by Superadmin - temporary password issued'
+            `Password reset email sent to user: ${email}`
         );
 
-        return newTempPassword;
+        return true;
     } catch (error: any) {
-        await logSystemEvent(
-            { type: 'RESET_PASSWORD', category: 'AUTH' },
-            { id: uid, type: 'USER' },
-            'FAILURE',
-            `Password renewal failed: ${error.message}`
-        );
+        console.error("Renewal Error:", error);
         throw error;
     }
 };
