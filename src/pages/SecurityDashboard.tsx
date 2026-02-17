@@ -732,7 +732,6 @@ const SecurityDashboard = () => {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <h3 style={{ margin: 0, fontSize: '1rem', color: '#64748b' }}>Today's Activities</h3>
-                                    <h3 style={{ margin: 0, fontSize: '1rem', color: '#64748b' }}>Today's Activities</h3>
                                     {/* Export button removed as requested */}
                                 </div>
                                 {[

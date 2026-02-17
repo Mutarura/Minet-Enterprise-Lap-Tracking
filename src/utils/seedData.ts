@@ -1,22 +1,22 @@
-import { db, auth } from "../services/firebase";
-import { doc, setDoc, addDoc, collection, Timestamp, query, where, getDocs, deleteDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
+import { db, secondaryAuth } from "../services/firebase";
+import { doc, setDoc, addDoc, collection, Timestamp, getDocs, deleteDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 const seedUsers = async () => {
     const users = [
-        { username: 'admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' },
-        { username: 'security', email: 'security@minet.com', password: 'GateSecure1!', role: 'security' }
+        { username: 'admin', name: 'System Admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' },
+        { username: 'security', name: 'Security Guard', email: 'security@minet.com', password: 'GateSecure1!', role: 'security' }
     ];
 
     for (const user of users) {
         try {
             let uid;
             try {
-                // Try creating the user
-                const userCredential = await createUserWithEmailAndPassword(auth, user.email, user.password);
+                // Try creating the user using secondaryAuth to avoid logging out the current admin
+                const userCredential = await createUserWithEmailAndPassword(secondaryAuth, user.email, user.password);
                 uid = userCredential.user.uid;
                 console.log(`Created new auth user: ${user.email}`);
-            } catch (authError) {
+            } catch (authError: any) {
                 if (authError.code === 'auth/email-already-in-use') {
                     // Just catch it, we'll try to update Firestore if we have a session
                     // Note: Cannot get UID without login or admin SDK
@@ -29,14 +29,16 @@ const seedUsers = async () => {
             // If we have a UID (new user), or if we are the current user, update Firestore
             if (uid) {
                 await setDoc(doc(db, "users", uid), {
+                    uid: uid,
                     username: user.username,
+                    name: user.name,
                     email: user.email,
                     role: user.role,
                     updatedAt: Timestamp.now()
                 });
                 console.log(`Ensured Firestore record for ${user.username} (${user.role})`);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error(`Unexpected error seeding user ${user.email}:`, error.message);
         }
     }
@@ -49,20 +51,22 @@ const seedUsers = async () => {
 export const bootstrapAdmin = async () => {
     console.log("Bootstrapping Admin...");
     try {
-        const admin = { username: 'admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' };
+        const admin = { username: 'admin', name: 'System Super Admin', email: 'admin@minet.com', password: 'MinetAdmin1!', role: 'superadmin' };
 
         try {
-            const userCredential = await createUserWithEmailAndPassword(auth, admin.email, admin.password);
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, admin.email, admin.password);
             const uid = userCredential.user.uid;
             await setDoc(doc(db, "users", uid), {
+                uid: uid,
                 username: admin.username,
+                name: admin.name,
                 email: admin.email,
                 role: admin.role,
                 isActive: true,
                 updatedAt: Timestamp.now()
             });
             console.log("Admin bootstrapped successfully with UID: " + uid);
-        } catch (e) {
+        } catch (e: any) {
             if (e.code === 'auth/email-already-in-use') {
                 console.log("Admin account already exists in Auth.");
             } else {
@@ -130,7 +134,7 @@ export const seedDatabase = async () => {
 
         console.log("Seeding completed!");
         alert("System Initialized Successfully! You can now login.");
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error seeding database:", error);
         if (error.message && error.message.includes("permission")) {
             alert("Permission Denied! Please ensure:\n1. Firestore is ENABLED in the Firebase Console.\n2. Security Rules are set to allow access (currently set to open in firestore.rules).\n3. You have deployed the rules via CLI (npx firebase deploy --only firestore:rules).");

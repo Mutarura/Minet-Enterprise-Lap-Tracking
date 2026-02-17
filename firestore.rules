@@ -37,13 +37,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true; // Allowed for username-based email lookup
       
-      // Only Superadmin can create or update users
+      // Only Superadmin can create users
       allow create: if isSuperAdmin();
       
       allow update: if isSuperAdmin() 
-        // Block privilege escalation (cannot create another superadmin if they aren't one)
-        // AND block self-deletion/disabling if it's the last superadmin (client side check usually but here we just restrict update)
-        && (request.resource.data.role == resource.data.role || isSuperAdmin());
+        // FIX: Allow the user themselves to update their own record. 
+        // This is REQUIRED for account activation (setting mustChangePassword to false).
+        || (isSignedIn() && request.auth.uid == userId);
       
       allow delete: if isSuperAdmin() && request.auth.uid != userId; // Block self deletion
     }

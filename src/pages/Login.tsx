@@ -33,7 +33,11 @@ const Login = () => {
             if (userDoc.exists()) {
                 const userData = userDoc.data();
                 if (userData.role === mode) {
-                    navigate(mode === 'admin' ? '/admin' : '/security');
+                    if (userData.mustChangePassword) {
+                        navigate(`/activate?username=${username}`);
+                    } else {
+                        navigate(mode === 'admin' ? '/admin' : '/security');
+                    }
                 } else {
                     setError(`This account is registered as ${userData.role}, not ${mode}.`);
                     await auth.signOut(); // Sign out if role mismatch

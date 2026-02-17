@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { signInWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { activateUserAccount, addAuditLog } from '../services/firebase';
-import { doc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { ShieldCheck, Lock, User, CheckCircle2 } from 'lucide-react';
 
 const ActivateAccount = () => {
@@ -16,16 +16,33 @@ const ActivateAccount = () => {
     const [userData, setUserData] = useState<any>(null);
     const navigate = useNavigate();
 
+    useEffect(() => {
+        // Auto-fill username if provided in URL
+        const params = new URLSearchParams(window.location.search);
+        const urlUsername = params.get('username');
+        if (urlUsername) {
+            setUsername(urlUsername);
+        }
+
+        // If the user is ALREADY logged in (likely from the login page redirect), 
+        // we check if they match the account being activated.
+        // We do NOT call signOut here anymore to support the Login -> Activate flow.
+    }, []);
+
     const handleVerify = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError('');
         try {
-            const data = await activateUserAccount(username);
+            const trimmedUsername = username.trim();
+            if (!trimmedUsername) throw new Error("Please enter a username");
+
+            const data = await activateUserAccount(trimmedUsername);
             setUserData(data);
             setStep(2);
         } catch (err: any) {
-            setError(err.message);
+            console.error("Verification Error:", err);
+            setError(err.message || "Username verification failed.");
         } finally {
             setLoading(false);
         }
@@ -33,11 +50,14 @@ const ActivateAccount = () => {
 
     const handleActivate = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (newPassword !== confirmPassword) {
+        const trimmedPassword = newPassword.trim();
+        const trimmedConfirm = confirmPassword.trim();
+
+        if (trimmedPassword !== trimmedConfirm) {
             setError("Passwords do not match");
             return;
         }
-        if (newPassword.length < 6) {
+        if (trimmedPassword.length < 6) {
             setError("Password must be at least 6 characters");
             return;
         }
@@ -45,26 +65,75 @@ const ActivateAccount = () => {
         setLoading(true);
         setError('');
         try {
-            // 1. Sign in with temp password
-            const userCred = await signInWithEmailAndPassword(auth, userData.email, userData.tempPassword);
+            console.log("Attempting activation for:", userData.email);
+
+            let userToUpdate = auth.currentUser;
+
+            // 1. Sign in ONLY if not already logged in as the target user
+            const targetEmail = userData.email.trim();
+            const targetTempPassword = userData.tempPassword.trim();
+
+            if (!userToUpdate || userToUpdate.email?.toLowerCase() !== targetEmail.toLowerCase()) {
+                console.log("Activation: Authenticating with temporary credentials...");
+                try {
+                    const userCred = await signInWithEmailAndPassword(auth, targetEmail, targetTempPassword);
+                    userToUpdate = userCred.user;
+                } catch (authErr: any) {
+                    console.error("Activation: Auth Error", authErr.code, authErr.message);
+                    if (authErr.code === 'auth/invalid-credential' || authErr.code === 'auth/wrong-password') {
+                        throw new Error("Activation failed: The temporary password does not match. Please ensure you haven't already activated or contact your Admin for a fresh account.");
+                    }
+                    throw authErr;
+                }
+            } else {
+                console.log("Activation: Using existing session for", userToUpdate.email);
+            }
 
             // 2. Update password
-            await updatePassword(userCred.user, newPassword);
+            if (!userToUpdate) throw new Error("Security Error: No active user session.");
+
+            try {
+                await updatePassword(userToUpdate, trimmedPassword);
+                console.log("Activation: Password updated successfully");
+            } catch (pError: any) {
+                console.error("Activation: Password update error", pError);
+                if (pError.code === 'auth/requires-recent-login') {
+                    throw new Error("Security Timeout: Please log out and log back in with your temporary password, then try again.");
+                }
+                throw pError;
+            }
 
             // 3. Update Firestore profile
-            const userRef = doc(db, "users", userData.uid);
-            await updateDoc(userRef, {
-                mustChangePassword: false,
-                tempPassword: deleteField() // Remove the temp password after activation
-            });
+            try {
+                const userRef = doc(db, "users", userData.uid);
+                await updateDoc(userRef, {
+                    mustChangePassword: false,
+                    tempPassword: deleteField(),
+                    updatedAt: serverTimestamp(),
+                    lastLogin: serverTimestamp()
+                });
+                console.log("Activation: Firestore profile updated");
+            } catch (fsError: any) {
+                console.error("Activation: Firestore Update Error", fsError);
+                throw new Error(`Profile update failed: ${fsError.message || "Permission Denied"}`);
+            }
 
             // 4. Audit Log
-            await addAuditLog("ACTIVATE_ACCOUNT", userData.uid, { username });
+            try {
+                await addAuditLog("ACTIVATE_ACCOUNT", userData.uid, { username: username.trim() });
+                console.log("Activation: Audit log added");
+            } catch (alError) {
+                console.warn("Activation: Audit log failed (non-critical)", alError);
+            }
 
             setStep(3);
         } catch (err: any) {
-            console.error(err);
-            setError(err.message);
+            console.error("Activation Final Step Error:", err.code || 'unknown', err.message);
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+                setError(`Credential Mismatch: The temporary password for ${userData?.email} is incorrect. This happens if the account was 'Reset' without being deleted. Please ask your Admin to DELETE and RE-CREATE your account.`);
+            } else {
+                setError(err.message || "An unexpected error occurred during activation.");
+            }
         } finally {
             setLoading(false);
         }
@@ -79,7 +148,7 @@ const ActivateAccount = () => {
                     </div>
                     <h1 style={{ fontSize: '1.75rem', color: 'var(--secondary)', marginBottom: '0.5rem' }}>Account Activation</h1>
                     <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
-                        {step === 1 ? "Enter your username to set up your account" : step === 2 ? "Specify a new password for your account" : "Success!"}
+                        {step === 1 ? "Enter your username to set up your account" : step === 2 ? `Setting up: ${userData?.email}` : "Success!"}
                     </p>
                 </div>
 

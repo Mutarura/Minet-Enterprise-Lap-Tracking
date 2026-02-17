@@ -64,9 +64,32 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
     </div>
   );
 
+  if (user && userRole && isActive) {
+    // Check Firestore data for mustChangePassword
+    // This is slightly redundant but safe
+  }
+
   if (!user) {
     const loginPath = (role === 'security') ? '/login/security' : '/login/it';
     return <Navigate to={loginPath} replace />;
+  }
+
+  // Redirect if password must be changed
+  const [mustActivate, setMustActivate] = useState(false);
+  useEffect(() => {
+    const checkActivation = async () => {
+      if (user) {
+        const ud = await getDoc(doc(db, "users", user.uid));
+        if (ud.exists() && ud.data().mustChangePassword) {
+          setMustActivate(true);
+        }
+      }
+    };
+    checkActivation();
+  }, [user]);
+
+  if (mustActivate) {
+    return <Navigate to="/activate" replace />;
   }
 
   if (!isActive) {
@@ -112,8 +135,8 @@ function App() {
         <Route path="/print-label" element={<PrintLabel />} />
         <Route path="/activate" element={<ActivateAccount />} />
         {/* Fill in legacy routes for redirection if needed, or remove them */}
-        <Route path="/admin" element={<Link to="/dashboard/it" replace />} />
-        <Route path="/security" element={<Link to="/dashboard/security" replace />} />
+        <Route path="/admin" element={<Navigate to="/dashboard/it" replace />} />
+        <Route path="/security" element={<Navigate to="/dashboard/security" replace />} />
       </Routes>
     </Router>
   );

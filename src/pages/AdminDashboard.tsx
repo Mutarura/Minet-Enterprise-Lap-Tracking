@@ -14,8 +14,12 @@ import {
     subscribeToSystemUsers,
     createSystemUser,
     updateSystemUser,
-    resetUserPassword
+    resetUserPassword,
+    deleteSystemUser,
+    subscribeToEmployees,
+    subscribeToDevices
 } from '../services/firebase';
+import { seedDatabase } from '../utils/seedData';
 import { signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -44,7 +48,7 @@ import DeviceCard from '../components/DeviceCard';
 import Modal from '../components/Modal';
 // @ts-ignore
 import { generateQRCode } from '../utils/qr';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -110,17 +114,29 @@ const AdminDashboard = () => {
     };
 
     useEffect(() => {
-        loadData();
-        checkRole();
+        const unsubEmps = subscribeToEmployees((data) => {
+            console.log("Real-time Emps Update:", data.length);
+            setEmployees(data);
+        });
+        const unsubDevs = subscribeToDevices((data) => {
+            console.log("Real-time Devs Update:", data.length);
+            setDevices(data);
+        });
 
         let unsubUsers = () => { };
-        if (activeTab === 'users') {
-            unsubUsers = subscribeToSystemUsers((data) => {
-                setSystemUsers(data);
-            });
+        if (activeTab === 'users' || userRole === 'superadmin') {
+            unsubUsers = subscribeToSystemUsers((data) => setSystemUsers(data));
         }
-        return () => unsubUsers();
-    }, [activeTab]);
+
+        checkRole();
+        loadData(); // Cold start fetch
+
+        return () => {
+            unsubEmps();
+            unsubDevs();
+            unsubUsers();
+        };
+    }, [activeTab, userRole]);
 
     const checkRole = async () => {
         if (auth.currentUser) {
@@ -128,14 +144,16 @@ const AdminDashboard = () => {
             const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
             if (userDoc.exists()) {
                 const data = userDoc.data();
-                setUserRole(data.role);
-                setCurrentUserProfile(data);
 
-                // If they are a superadmin, default their view to User Management
-                if (data.role === 'superadmin') {
+                // Only default to 'users' tab on initial load for superadmins
+                if (data.role === 'superadmin' && userRole === null) {
                     setActiveTab('users');
                 }
+
+                setUserRole(data.role);
+                setCurrentUserProfile(data);
             } else if (auth.currentUser.email === 'admin@minet.com') {
+                if (userRole === null) setActiveTab('users');
                 setUserRole('superadmin');
             }
         }
@@ -207,8 +225,7 @@ const AdminDashboard = () => {
             setEmpForm({ empId: '', name: '', departmentOrFloor: '' });
             setPhotoFile(null);
 
-            // Refresh list (non-blocking for the UI submission state)
-            loadData();
+            // Refresh list is now handled by onSnapshot
         } catch (err: any) {
             console.error("Submission error details:", err);
             alert("Error saving employee: " + (err.message || "Unknown error"));
@@ -279,7 +296,6 @@ const AdminDashboard = () => {
                 }
             }
             setModalOpen(false);
-            loadData();
             resetMobileState(); // Ensure clean slate on mobile
         } catch (err: any) {
             alert("Error: " + err.message);
@@ -363,30 +379,65 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                <button
-                    onClick={async () => {
-                        if (confirm('Are you sure you want to logout?')) {
-                            await signOut(auth);
-                            window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
-                        }
-                    }}
-                    style={{
-                        background: 'rgba(226, 26, 34, 0.05)',
-                        border: '1px solid rgba(226, 26, 34, 0.2)',
-                        color: 'var(--primary)',
-                        fontWeight: '700',
-                        padding: '0.5rem 1rem',
-                        borderRadius: 'var(--radius-sm)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                    }}
-                >
-                    <LogOut size={18} />
-                    <span>Logout</span>
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    {userRole === 'superadmin' && (
+                        <button
+                            onClick={async () => {
+                                if (confirm("Initialize Database with default employees and devices? This will clear current data.")) {
+                                    setIsSubmitting(true);
+                                    try {
+                                        await seedDatabase();
+                                        loadData(true);
+                                    } catch (e: any) {
+                                        alert(e.message);
+                                    } finally {
+                                        setIsSubmitting(false);
+                                    }
+                                }
+                            }}
+                            disabled={isSubmitting}
+                            style={{
+                                background: 'white',
+                                border: '1px solid #cbd5e1',
+                                color: '#475569',
+                                fontWeight: '700',
+                                padding: '0.5rem 1rem',
+                                borderRadius: 'var(--radius-sm)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            <RefreshCw size={16} /> Seed Test Data
+                        </button>
+                    )}
+                    <button
+                        onClick={async () => {
+                            if (confirm('Are you sure you want to logout?')) {
+                                await signOut(auth);
+                                window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
+                            }
+                        }}
+                        style={{
+                            background: 'rgba(226, 26, 34, 0.05)',
+                            border: '1px solid rgba(226, 26, 34, 0.2)',
+                            color: 'var(--primary)',
+                            fontWeight: '700',
+                            padding: '0.5rem 1rem',
+                            borderRadius: 'var(--radius-sm)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        <LogOut size={18} />
+                        <span>Logout</span>
+                    </button>
+                </div>
             </header>
 
             <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem', width: '100%', boxSizing: 'border-box', flex: 1 }}>
@@ -441,12 +492,15 @@ const AdminDashboard = () => {
                                     <Search size={20} color="#94a3b8" />
                                     <input
                                         type="text"
-                                        placeholder="Search by ID or Name..."
+                                        placeholder="Search employees..."
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                         style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
                                     />
                                 </div>
+                                <button onClick={() => loadData(true)} className="glass-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                                    <RefreshCw size={20} /> Refresh
+                                </button>
                                 <button onClick={() => {
                                     const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
                                     setIsAddingEmployee(true);
@@ -551,7 +605,6 @@ const AdminDashboard = () => {
                                                                         try {
                                                                             await updateDevice(dev.serialNumber, { assignedTo: selectedEmployee.empId });
                                                                             setAssigningType(null);
-                                                                            loadData();
                                                                             alert("Device assigned successfully!");
                                                                         } catch (err: any) {
                                                                             alert(err.message);
@@ -741,8 +794,8 @@ const AdminDashboard = () => {
 
                         <div className="user-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
                             {systemUsers.filter(u =>
-                                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (u.username && u.username.toLowerCase().includes(searchTerm.toLowerCase()))
+                                (u.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                                (u.username?.toLowerCase() || '').includes(searchTerm.toLowerCase())
                             ).map(user => (
                                 <div key={user.id} className="glass-card" style={{ padding: '1.5rem', opacity: user.isActive === false ? 0.6 : 1, borderLeft: `4px solid ${user.role === 'superadmin' ? '#7c3aed' : user.role === 'admin' ? 'var(--primary)' : '#64748b'}` }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -775,7 +828,7 @@ const AdminDashboard = () => {
                                             {userRole === 'superadmin' && (
                                                 <button
                                                     onClick={async () => {
-                                                        if (confirm(`Reset password for ${user.name}? This will enforce a new temporary password.`)) {
+                                                        if (confirm(`Reset password for ${user.name}? This will enforce a new temporary password. NOTE: Due to security rules, if the user already activated their account, you must delete and re-create them instead.`)) {
                                                             try {
                                                                 const newTemp = await resetUserPassword(user.id);
                                                                 setNewAccountInfo({ username: user.username, tempPassword: newTemp });
@@ -803,11 +856,29 @@ const AdminDashboard = () => {
                                             >
                                                 {user.isActive === false ? <UserCheck size={18} /> : <UserX size={18} />}
                                             </button>
+                                            {userRole === 'superadmin' && user.id !== auth.currentUser?.uid && (
+                                                <button
+                                                    onClick={async () => {
+                                                        if (confirm(`PERMANENTLY DELETE dashboard data for ${user.name}?\n\nNote: This only removes them from the dashboard. Due to security rules, their login identity still exists in the system. To fully re-create them with the exact same name, you must use the Firebase Console.`)) {
+                                                            try {
+                                                                await deleteSystemUser(user.id);
+                                                                alert("User data removed. If you need to re-create this user with the same name, please add a number after their name or contact IT.");
+                                                            } catch (err: any) {
+                                                                alert(err.message);
+                                                            }
+                                                        }
+                                                    }}
+                                                    style={{ background: '#fee2e2', border: 'none', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', color: 'var(--danger)' }}
+                                                    title="Delete Permanently"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     <div style={{ marginTop: '1.25rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', fontSize: '0.8rem', color: '#94a3b8' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>Created {user.createdAt?.toDate().toLocaleDateString()} by {user.createdBy}</span>
+                                            <span>Created {user.createdAt ? user.createdAt.toDate().toLocaleDateString() : 'N/A'} by {user.createdBy || 'System'}</span>
                                             <span>Last: {user.lastLogin ? user.lastLogin.toDate().toLocaleString() : 'Never'}</span>
                                         </div>
                                     </div>
@@ -871,6 +942,9 @@ const AdminDashboard = () => {
                                     style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
                                 />
                             </div>
+                            <button onClick={() => loadData(true)} className="glass-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                                <RefreshCw size={20} /> Refresh
+                            </button>
                             <button onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' }); setModalOpen(true); }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Plus size={20} /> Add {activeTab === 'company' ? 'Laptop' : 'Device'}
                             </button>
@@ -882,7 +956,7 @@ const AdminDashboard = () => {
                                     key={dev.id}
                                     device={dev}
                                     onEdit={(d) => { setEditingDevice(d); setDevForm(d); setModalType('device'); setModalOpen(true); }}
-                                    onDelete={async (id) => { if (confirm('Retire (delete) this device permanently?')) { await retireDevice(id); loadData(); resetMobileState(); } }}
+                                    onDelete={async (id) => { if (confirm('Retire (delete) this device permanently?')) { await retireDevice(id); resetMobileState(); } }}
                                     onGenerateQR={handleGenerateQR}
                                 />
                             ))}
@@ -1061,19 +1135,25 @@ const AdminDashboard = () => {
                         The account for <strong>{userForm.name}</strong> has been created. Please share these temporary credentials with them.
                     </p>
 
-                    <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0', textAlign: 'left', marginBottom: '2rem' }}>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Username</label>
-                            <p style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: '700', color: 'var(--secondary)' }}>{newAccountInfo?.username}</p>
+                    <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '2px solid #e2e8f0', textAlign: 'left', marginBottom: '2rem' }}>
+                        <div style={{ marginBottom: '1.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Username (Case Sensitive)</label>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                                <p style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: 'var(--secondary)' }}>{newAccountInfo?.username}</p>
+                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.username || ''); alert('Username copied!'); }} style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Copy</button>
+                            </div>
                         </div>
                         <div>
-                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase' }}>Temporary Password</label>
-                            <p style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', fontFamily: 'monospace' }}>{newAccountInfo?.tempPassword}</p>
+                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Temporary Password</label>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                                <p style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: 'var(--primary)', fontFamily: 'monospace', letterSpacing: '1px' }}>{newAccountInfo?.tempPassword}</p>
+                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.tempPassword || ''); alert('Password copied!'); }} style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Copy</button>
+                            </div>
                         </div>
                     </div>
 
-                    <p style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', marginBottom: '1.5rem' }}>
-                        Note: The user will be required to change this password upon their first activation.
+                    <p style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: '700', marginBottom: '1.5rem' }}>
+                        ⚠️ Important: Use the Username exactly as shown above.
                     </p>
 
                     <button onClick={() => setShowSuccessModal(false)} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
@@ -1107,7 +1187,7 @@ const AdminDashboard = () => {
             </Modal>
 
             {/* Hidden Print-Only Section Removed */}
-        </div>
+        </div >
     );
 };
 

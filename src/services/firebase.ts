@@ -19,7 +19,7 @@ import {
 // Storage imports removed to bypass billing/bucket requirements
 // import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-export { auth, db, storage };
+export { auth, db, storage, secondaryAuth };
 
 // ============================
 // COLLECTION REFERENCES
@@ -42,6 +42,15 @@ export const collections = {
 export const getEmployees = async () => {
     const snapshot = await getDocs(collections.employees);
     return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToEmployees = (callback: (data: any[]) => void) => {
+    return onSnapshot(collections.employees, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Employee Subscription Error:", error);
+    });
 };
 
 export const getEmployeeByEmpId = async (empId: string) => {
@@ -129,6 +138,15 @@ export const deleteEmployee = async (id: string) => {
 export const getDevices = async () => {
     const snapshot = await getDocs(collections.devices);
     return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+};
+
+export const subscribeToDevices = (callback: (data: any[]) => void) => {
+    return onSnapshot(collections.devices, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Device Subscription Error:", error);
+    });
 };
 
 export const addDevice = async (data: {
@@ -230,6 +248,16 @@ export const addLog = async (log: {
         lastAction: log.action,
         lastActionAt: serverTimestamp(),
         updatedAt: Timestamp.now()
+    });
+};
+
+export const subscribeToAllLogs = (callback: (data: any[]) => void) => {
+    const q = query(collections.logs, orderBy("timestamp", "desc"));
+    return onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(data);
+    }, (error) => {
+        console.error("Logs Subscription Error:", error);
     });
 };
 
@@ -440,15 +468,19 @@ export const addAuditLog = async (action: string, targetId: string, details: any
     });
 };
 
-export const generateUsername = async (fullName: string) => {
+export const generateUsername = async (fullName: string, forceSuffix?: string) => {
     const parts = fullName.trim().split(" ");
     const firstName = parts[0];
     const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
 
-    // Logic: SecondName + FirstLetterOfFirstName
-    let baseUsername = (lastName + (firstName ? firstName[0] : "")).replace(/[^a-zA-Z0-9]/g, "");
+    // Logic: SecondName + FirstLetterOfFirstName (Lowercased for consistency)
+    let baseUsername = (lastName + (firstName ? firstName[0] : "")).replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 
-    // Ensure uniqueness
+    if (forceSuffix) {
+        baseUsername += forceSuffix;
+    }
+
+    // Ensure uniqueness in Firestore
     let username = baseUsername;
     let counter = 1;
     let exists = true;
@@ -470,48 +502,71 @@ export const generateUsername = async (fullName: string) => {
 export const createSystemUser = async (data: {
     name: string;
     role: "superadmin" | "admin" | "security";
+    email?: string; // Added for seeding
+    password?: string; // Added for seeding
 }) => {
+    // Helper to attempt creation
+    const attemptCreation = async (attemptName: string, attemptSuffix?: string): Promise<{ username: string, tempPassword: string, uid: string }> => {
+        const username = await generateUsername(attemptName, attemptSuffix);
+        const email = data.email || `${username.toLowerCase()}@minet.com`;
+        const tempPassword = data.password || Math.random().toString(36).substring(2, 12);
+
+        try {
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+            const uid = userCredential.user.uid;
+
+            // 3. Create Firestore record
+            await setDoc(doc(db, "users", uid), {
+                uid: uid,
+                name: data.name,
+                username: username,
+                email: email,
+                role: data.role,
+                isActive: true, // New users enabled by default
+                mustChangePassword: true, // Users must change pswd upon activation
+                tempPassword: tempPassword,
+                createdAt: serverTimestamp(),
+                createdBy: auth.currentUser?.displayName || auth.currentUser?.email
+            });
+
+            await addAuditLog("CREATE_USER", uid, { username, role: data.role });
+            return { username, tempPassword, uid };
+        } catch (authError: any) {
+            if (authError.code === 'auth/email-already-in-use' && !data.email) {
+                // If the default generated email is taken, try once more with a random 2-digit suffix
+                const randomSuffix = Math.floor(10 + Math.random() * 90).toString();
+                return attemptCreation(attemptName, randomSuffix);
+            }
+            throw authError;
+        }
+    };
+
     try {
-        // 1. Generate Username
-        const username = await generateUsername(data.name);
-        const email = `${username.toLowerCase()}@minet.tracking`;
-        const tempPassword = Math.random().toString(36).slice(-10); // Random temp password
-
-        // 2. Create in Firebase Auth using the secondary auth instance
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
-        const uid = userCredential.user.uid;
-
-        // 3. Create profile in Firestore
-        await setDoc(doc(db, "users", uid), {
-            uid,
-            name: data.name,
-            username: username,
-            email: email, // used internally for auth
-            role: data.role,
-            mustChangePassword: true,
-            tempPassword: tempPassword, // Stored temporarily for activation
-            createdAt: serverTimestamp(),
-            createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "System",
-            isActive: true,
-            lastLogin: null
-        });
-
-        // 4. Audit log
-        await addAuditLog("CREATE_USER", uid, { username, role: data.role });
-
-        return { uid, username, tempPassword };
+        return await attemptCreation(data.name);
     } catch (error: any) {
-        console.error("Error creating user:", error);
+        console.error("Critical User Creation Error:", error);
+        if (error.code === 'auth/email-already-in-use') {
+            throw new Error("This user identity still exists in the Security Auth system. Please use a slightly different name or contact IT to manually clear the old record.");
+        }
         throw error;
     }
 };
 
 export const activateUserAccount = async (username: string) => {
-    // 1. Find user by username
-    const q = query(collections.users, where("username", "==", username));
+    // 1. Find user by username (normalization)
+    const normalizedUsername = username.trim().toLowerCase();
+    const q = query(collections.users, where("username", "==", normalizedUsername));
     const snap = await getDocs(q);
 
-    if (snap.empty) throw new Error("Username not found");
+    if (snap.empty) {
+        // Fallback: Check if they entered their full email
+        if (normalizedUsername.includes('@')) {
+            const q2 = query(collections.users, where("email", "==", normalizedUsername));
+            const snap2 = await getDocs(q2);
+            if (!snap2.empty) return { email: snap2.docs[0].data().email, tempPassword: snap2.docs[0].data().tempPassword, uid: snap2.docs[0].id };
+        }
+        throw new Error("Username not found. Please ensure you typed it correctly or contact Admin.");
+    }
     const userDoc = snap.docs[0];
     const userData = userDoc.data();
 
@@ -537,8 +592,17 @@ export const updateSystemUser = async (uid: string, data: {
     await addAuditLog("UPDATE_USER", uid, data);
 };
 
+export const deleteSystemUser = async (uid: string) => {
+    const userRef = doc(db, "users", uid);
+    await deleteDoc(userRef);
+    await addAuditLog("DELETE_USER", uid, { action: "PERMANENT_DELETE" });
+};
+
 export const resetUserPassword = async (uid: string) => {
-    const tempPassword = Math.random().toString(36).slice(-10);
+    // Note: Due to Firebase Client SDK security, we can update the Temp Password in Firestore,
+    // but we cannot force-update the Auth password for ANOTHER user.
+    // The Admin should usually delete and re-create the user if they lost the password before activation.
+    const tempPassword = Math.random().toString(36).substring(2, 12);
     const userRef = doc(db, "users", uid);
 
     await updateDoc(userRef, {
@@ -548,7 +612,10 @@ export const resetUserPassword = async (uid: string) => {
         updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
     });
 
-    await addAuditLog("RESET_PASSWORD", uid, { action: "FORCED_TEMP_PASSWORD" });
+    await addAuditLog("RESET_PASSWORD", uid, {
+        action: "REQUEST_NEW_TEMP",
+        note: "Firestore record updated. If user cannot login, delete and re-create user in Auth."
+    });
 
     return tempPassword;
 };
