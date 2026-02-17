@@ -14,10 +14,11 @@ import {
     subscribeToSystemUsers,
     createSystemUser,
     updateSystemUser,
-    resetUserPassword,
+
     deleteSystemUser,
     subscribeToEmployees,
-    subscribeToDevices
+    subscribeToDevices,
+    logSystemEvent
 } from '../services/firebase';
 
 import { signOut } from 'firebase/auth';
@@ -113,30 +114,93 @@ const AdminDashboard = () => {
         resetMobileState();
     };
 
-    // 1. Initial Profile/Role Fetching
-    useEffect(() => {
-        const checkRole = async () => {
-            if (auth.currentUser) {
-                const { getDoc, doc } = await import('firebase/firestore');
-                const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-                if (userDoc.exists()) {
-                    const data = userDoc.data();
-                    if (data.role === 'superadmin' && userRole === null) {
-                        setActiveTab('users');
-                    }
-                    setUserRole(data.role);
-                    setCurrentUserProfile(data);
-                } else if (auth.currentUser.email === 'admin@minet.com') {
-                    if (userRole === null) setActiveTab('users');
-                    setUserRole('superadmin');
-                }
-            }
-        };
-        checkRole();
-    }, []);
+    // 1. Initial Profile/Role Fetching with Timeout Protection
+    const [isInitializing, setIsInitializing] = useState(true);
+    const [initError, setInitError] = useState<string | null>(null);
 
-    // 2. Data Subscriptions
     useEffect(() => {
+        let timeoutId: number;
+        let mounted = true;
+
+        // Timeout protection: If initialization takes more than 10 seconds, show error
+        timeoutId = setTimeout(() => {
+            if (mounted && isInitializing) {
+                console.error("Dashboard initialization timeout");
+                setInitError("Connection timeout. Please refresh the page.");
+                setIsInitializing(false);
+            }
+        }, 10000);
+
+        // Use onAuthStateChanged to reliably wait for the session to be ready
+        const unsubscribe = auth.onAuthStateChanged(async (user) => {
+            if (!mounted) return;
+            if (user) {
+                const { getDoc, doc } = await import('firebase/firestore');
+                try {
+                    console.log("Fetching user profile for:", user.uid);
+                    const userDoc = await getDoc(doc(db, "users", user.uid));
+
+                    if (!mounted) return;
+
+                    if (userDoc.exists()) {
+                        console.log("User profile loaded:", userDoc.data().role);
+                        const data = userDoc.data();
+
+                        // Force Superadmin tab if applicable
+                        if (data.role === 'superadmin') {
+                            // If we aren't already on the users tab, switch to it
+                            // But better: Just set the role. The UI will render appropriately.
+                            // We set activeTab only if it's the first load
+                            if (userRole === null) setActiveTab('users');
+                        }
+
+                        setUserRole(data.role);
+                        setCurrentUserProfile(data);
+                    } else if (user.email === 'admin@minet.com') {
+                        // Fallback implementation for bootstrap admin
+                        console.log("Bootstrap admin detected");
+                        if (userRole === null) setActiveTab('users');
+                        setUserRole('superadmin');
+                        setCurrentUserProfile({
+                            name: 'System Administrator',
+                            email: user.email,
+                            role: 'superadmin',
+                            username: 'Admin'
+                        });
+                    } else {
+                        // User exists in Auth but not in Firestore
+                        console.error("User profile not found in Firestore");
+                        setInitError("User profile not found. Please contact your administrator.");
+                    }
+                } catch (error: any) {
+                    console.error("Profile Fetch Error:", error);
+                    if (mounted) {
+                        setInitError(`Failed to load profile: ${error.message || 'Unknown error'}`);
+                    }
+                }
+            } else {
+                // No user found, should redirect (handled by ProtectedRoute usually, but good to be safe)
+                console.log("No authenticated user found");
+                setUserRole(null);
+            }
+
+            if (mounted) {
+                clearTimeout(timeoutId);
+                setIsInitializing(false);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            clearTimeout(timeoutId);
+            unsubscribe();
+        };
+    }, []); // Run once on mount
+
+    // 2. Data Subscriptions - Only run when initialized and no errors
+    useEffect(() => {
+        // Don't subscribe if still initializing or there's an error
+        if (isInitializing || initError || !userRole) return;
 
         const unsubEmps = subscribeToEmployees((data) => {
             setEmployees(data);
@@ -157,7 +221,7 @@ const AdminDashboard = () => {
             unsubDevs();
             unsubUsers();
         };
-    }, [activeTab, userRole === 'superadmin']); // Only re-subscribe if tab changes OR superadmin status changes
+    }, [activeTab, userRole, isInitializing, initError]); // Re-run when these change
 
     const loadData = async (refreshAlerts = false) => {
         try {
@@ -320,7 +384,7 @@ const AdminDashboard = () => {
             };
             const url = await generateQRCode(metadata);
 
-            await updateDoc(doc(db, "devices", device.serialNumber), { qrCodeURL: url });
+            await updateDoc(doc(db, "devices", device.id), { qrCodeURL: url });
 
             setQrData({ url, device: metadata });
             setModalType('qr');
@@ -344,18 +408,63 @@ const AdminDashboard = () => {
     };
 
     const filteredEmployees = employees
-        .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.empId.toLowerCase().includes(searchTerm.toLowerCase()));
+        .filter(e => String(e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || String(e.empId || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
     console.log("🔍 Filtered employees for display:", filteredEmployees.length, filteredEmployees);
 
     const filteredDevices = devices.filter(d =>
         (activeTab === 'company' ? d.type === 'COMPANY' : d.type === 'BYOD') &&
-        d.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())
+        String(d.serialNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const getAssignedDevices = (empId: string) => {
         return devices.filter(d => d.assignedTo === empId);
     };
+
+    // Conditional rendering - AFTER all hooks
+    if (initError) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc', flexDirection: 'column', gap: '1.5rem', padding: '2rem' }}>
+                <div style={{ fontSize: '3rem' }}>⚠️</div>
+                <h2 style={{ color: 'var(--danger)', margin: 0 }}>Initialization Error</h2>
+                <p style={{ color: '#64748b', textAlign: 'center', maxWidth: '400px' }}>{initError}</p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="btn-primary"
+                    style={{ padding: '0.75rem 2rem' }}
+                >
+                    Reload Page
+                </button>
+            </div>
+        );
+    }
+
+    if (isInitializing) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc', flexDirection: 'column', gap: '1rem' }}>
+                <div className="spinner" style={{ width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                <p style={{ color: '#64748b', fontWeight: '600' }}>Loading Management Portal...</p>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Establishing secure connection...</p>
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
+    }
+
+    if (!userRole) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc', flexDirection: 'column', gap: '1.5rem' }}>
+                <div style={{ fontSize: '3rem' }}>🔒</div>
+                <h2 style={{ color: '#64748b', margin: 0 }}>Access Denied</h2>
+                <p style={{ color: '#94a3b8' }}>Unable to verify your permissions.</p>
+                <button
+                    onClick={() => { auth.signOut(); window.location.href = '/'; }}
+                    className="btn-primary"
+                >
+                    Return to Login
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
@@ -383,6 +492,12 @@ const AdminDashboard = () => {
                     <button
                         onClick={async () => {
                             if (confirm('Are you sure you want to logout?')) {
+                                await logSystemEvent(
+                                    { type: 'LOGOUT', category: 'AUTH' },
+                                    { id: auth.currentUser?.uid || 'unknown', type: 'USER' },
+                                    'SUCCESS',
+                                    'User initiated logout'
+                                );
                                 await signOut(auth);
                                 window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
                             }
@@ -549,17 +664,17 @@ const AdminDashboard = () => {
                                                 {devices
                                                     .filter(d => d.type === assigningType && !d.assignedTo)
                                                     .filter(d =>
-                                                        d.serialNumber.toLowerCase().includes(assignSearch.toLowerCase()) ||
-                                                        d.make.toLowerCase().includes(assignSearch.toLowerCase()) ||
-                                                        d.model.toLowerCase().includes(assignSearch.toLowerCase())
+                                                        String(d.serialNumber || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                        String(d.make || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                        String(d.model || '').toLowerCase().includes(assignSearch.toLowerCase())
                                                     )
                                                     .length > 0 ? (
                                                     devices
                                                         .filter(d => d.type === assigningType && !d.assignedTo)
                                                         .filter(d =>
-                                                            d.serialNumber.toLowerCase().includes(assignSearch.toLowerCase()) ||
-                                                            d.make.toLowerCase().includes(assignSearch.toLowerCase()) ||
-                                                            d.model.toLowerCase().includes(assignSearch.toLowerCase())
+                                                            String(d.serialNumber || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                            String(d.make || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+                                                            String(d.model || '').toLowerCase().includes(assignSearch.toLowerCase())
                                                         )
                                                         .map(dev => (
                                                             <div key={dev.serialNumber} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -761,8 +876,8 @@ const AdminDashboard = () => {
 
                         <div className="user-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
                             {systemUsers.filter(u =>
-                                (u.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                                (u.username?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+                                String(u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                String(u.username || '').toLowerCase().includes(searchTerm.toLowerCase())
                             ).map(user => (
                                 <div key={user.id} className="glass-card" style={{ padding: '1.5rem', opacity: user.isActive === false ? 0.6 : 1, borderLeft: `4px solid ${user.role === 'superadmin' ? '#7c3aed' : user.role === 'admin' ? 'var(--primary)' : '#64748b'}` }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -795,19 +910,32 @@ const AdminDashboard = () => {
                                             {userRole === 'superadmin' && (
                                                 <button
                                                     onClick={async () => {
-                                                        if (confirm(`Reset password for ${user.name}? This will enforce a new temporary password. NOTE: Due to security rules, if the user already activated their account, you must delete and re-create them instead.`)) {
+                                                        const confirmMsg = `Are you sure you want to RENEW the password for ${user.name}?\n\nThis will invalidate their current password and issue a new temporary one.`;
+                                                        if (confirm(confirmMsg)) {
                                                             try {
-                                                                const newTemp = await resetUserPassword(user.id);
-                                                                setNewAccountInfo({ username: user.username, tempPassword: newTemp });
-                                                                setUserForm({ name: user.name, role: user.role }); // Ensure userForm.name is correct for modal
+                                                                const { renewUserPassword } = await import('../services/firebase');
+                                                                const newTemp = await renewUserPassword(user.id);
+
+                                                                // Re-use the success modal logic to show the new temp password
+                                                                setNewAccountInfo({
+                                                                    username: user.username,
+                                                                    tempPassword: newTemp
+                                                                });
                                                                 setShowSuccessModal(true);
+
+                                                                await logSystemEvent(
+                                                                    { type: 'PASSWORD_RESET_INITIATED', category: 'AUTH' },
+                                                                    { id: user.id, type: 'USER', metadata: { username: user.username } },
+                                                                    'SUCCESS',
+                                                                    `Set up / Renew password renewal triggered by Superadmin`
+                                                                );
                                                             } catch (err: any) {
-                                                                alert(err.message);
+                                                                alert("Renewal failed: " + err.message);
                                                             }
                                                         }
                                                     }}
                                                     style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', color: '#92400e' }}
-                                                    title="Renew Password"
+                                                    title="Renew User Password"
                                                 >
                                                     <RefreshCw size={18} />
                                                 </button>
@@ -1093,34 +1221,39 @@ const AdminDashboard = () => {
             </Modal>
 
             {/* Account Creation Success Modal */}
-            <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Account Created Successfully">
-                <div style={{ textAlign: 'center', padding: '1rem' }}>
+            {/* Account Creation Success Modal */}
+            <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Security Credentials Issued">
+                <div style={{ textAlign: 'center' }}>
                     <div style={{ color: '#10b981', marginBottom: '1.5rem' }}>
                         <CheckCircle2 size={64} style={{ margin: '0 auto' }} />
                     </div>
-                    <p style={{ color: '#475569', fontSize: '0.95rem', marginBottom: '1.5rem' }}>
-                        The account for <strong>{userForm.name}</strong> has been created. Please share these temporary credentials with them.
-                    </p>
 
-                    <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '2px solid #e2e8f0', textAlign: 'left', marginBottom: '2rem' }}>
-                        <div style={{ marginBottom: '1.25rem' }}>
-                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Username (Case Sensitive)</label>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem', textAlign: 'left' }}>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e', fontWeight: '500' }}>
+                            <strong>SECURITY NOTICE:</strong> This password is only shown ONCE. Please ensure the user receives it securely. It will be required for account activation/renewal.
+                        </p>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                        <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+                            <label style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>Username (Case Sensitive)</label>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                                <p style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: 'var(--secondary)' }}>{newAccountInfo?.username}</p>
-                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.username || ''); alert('Username copied!'); }} style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Copy</button>
+                                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--secondary)' }}>{newAccountInfo?.username}</div>
+                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.username || ''); alert('Username copied!'); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Copy</button>
                             </div>
                         </div>
-                        <div>
-                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Temporary Password</label>
+
+                        <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
+                            <label style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>Temporary Password</label>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                                <p style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: 'var(--primary)', fontFamily: 'monospace', letterSpacing: '1px' }}>{newAccountInfo?.tempPassword}</p>
-                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.tempPassword || ''); alert('Password copied!'); }} style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Copy</button>
+                                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--primary)', fontFamily: 'monospace' }}>{newAccountInfo?.tempPassword}</div>
+                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.tempPassword || ''); alert('Password copied!'); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Copy</button>
                             </div>
                         </div>
                     </div>
 
-                    <p style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: '700', marginBottom: '1.5rem' }}>
-                        ⚠️ Important: Use the Username exactly as shown above.
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>
+                        The user can now go to the login page and click <strong>"Set up / Renew password"</strong> to complete the process.
                     </p>
 
                     <button onClick={() => setShowSuccessModal(false)} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>

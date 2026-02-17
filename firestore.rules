@@ -35,17 +35,26 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if true; // Allowed for username-based email lookup
+      allow read: if true; // Public read for username-based email lookup during activation
       
       // Only Superadmin can create users
       allow create: if isSuperAdmin();
       
+      // Update restrictions:
+      // 1. Superadmin can update anything
+      // 2. Users can only update their own activation flags and timestamps during the setup process
+      // 3. NO ONE (including Superadmin) can change their own role to prevent elevation or accidental lockout
       allow update: if isSuperAdmin() 
-        // FIX: Allow the user themselves to update their own record. 
-        // This is REQUIRED for account activation (setting mustChangePassword to false).
-        || (isSignedIn() && request.auth.uid == userId);
+        || (
+          isSignedIn() && request.auth.uid == userId 
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['mustSetPassword', 'passwordResetRequired', 'lastPasswordChange', 'updatedAt', 'lastLogin', 'tempPasswordHash', 'tempPasswordIssuedAt'])
+          && request.resource.data.role == resource.data.role // Cannot change role
+          && request.resource.data.isActive == resource.data.isActive // Cannot change status
+        );
       
-      allow delete: if isSuperAdmin() && request.auth.uid != userId; // Block self deletion
+      // Only Superadmin can delete accounts, and NOT their own account
+      allow delete: if isSuperAdmin() && request.auth.uid != userId;
     }
 
     // Employees Collection

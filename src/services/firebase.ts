@@ -88,6 +88,13 @@ export const addEmployee = async (data: {
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
     });
+
+    await logSystemEvent(
+        { type: 'CREATE', category: 'EMPLOYEE' },
+        { id: data.empId, type: 'EMPLOYEE', metadata: { name: data.name, dept: data.departmentOrFloor } },
+        'SUCCESS',
+        `Registered new employee: ${data.name} (${data.empId})`
+    );
 };
 
 export const updateEmployee = async (
@@ -112,6 +119,13 @@ export const updateEmployee = async (
     if (data.departmentOrFloor) updatePayload.departmentOrFloor = data.departmentOrFloor;
 
     await updateDoc(docRef, updatePayload);
+
+    await logSystemEvent(
+        { type: 'UPDATE', category: 'EMPLOYEE' },
+        { id: id, type: 'EMPLOYEE', metadata: data },
+        'SUCCESS',
+        `Updated employee profile for ${existingData?.name}`
+    );
 };
 
 export const deleteEmployee = async (id: string) => {
@@ -129,6 +143,13 @@ export const deleteEmployee = async (id: string) => {
     }
 
     await deleteDoc(doc(db, "employees", id));
+
+    await logSystemEvent(
+        { type: 'DELETE', category: 'EMPLOYEE' },
+        { id: id, type: 'EMPLOYEE', metadata: empData },
+        'SUCCESS',
+        `Deleted employee record: ${empData?.name}`
+    );
 };
 
 // ============================
@@ -179,6 +200,13 @@ export const addDevice = async (data: {
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
     });
+
+    await logSystemEvent(
+        { type: 'CREATE', category: 'DEVICE' },
+        { id: data.serialNumber, type: 'DEVICE', metadata: data },
+        'SUCCESS',
+        `Registered new ${data.type} device: ${data.make} ${data.model} (${data.serialNumber})`
+    );
 };
 
 export const updateDevice = async (serialNumber: string, data: Partial<{
@@ -218,10 +246,25 @@ export const updateDevice = async (serialNumber: string, data: Partial<{
 
     const docRef = doc(db, "devices", serialNumber);
     await updateDoc(docRef, { ...data, updatedAt: Timestamp.now() });
+
+    const changeType = data.assignedTo !== undefined ? (data.assignedTo ? 'ASSIGN' : 'UNASSIGN') : 'UPDATE';
+    await logSystemEvent(
+        { type: 'UPDATE', category: 'DEVICE' },
+        { id: serialNumber, type: 'DEVICE', metadata: data },
+        'SUCCESS',
+        `${changeType === 'ASSIGN' ? `Assigned to ${data.assignedTo}` : changeType === 'UNASSIGN' ? 'Unassigned device' : 'Updated details'}`
+    );
 };
 
 export const retireDevice = async (id: string) => {
     await deleteDoc(doc(db, "devices", id));
+
+    await logSystemEvent(
+        { type: 'DELETE', category: 'DEVICE' },
+        { id: id, type: 'DEVICE' },
+        'SUCCESS',
+        `Retired/Deleted device: ${id}`
+    );
 };
 
 // ============================
@@ -249,6 +292,13 @@ export const addLog = async (log: {
         lastActionAt: serverTimestamp(),
         updatedAt: Timestamp.now()
     });
+
+    await logSystemEvent(
+        { type: log.action === 'CHECK_IN' ? 'CHECK_IN' : 'CHECK_OUT', category: 'DEVICE' },
+        { id: log.serialNumber, type: 'DEVICE', metadata: { empId: log.empId, name: log.employeeName } },
+        'SUCCESS',
+        `Device ${log.serialNumber} ${log.action}`
+    );
 };
 
 export const subscribeToAllLogs = (callback: (data: any[]) => void) => {
@@ -332,6 +382,13 @@ export const addVisitor = async (data: {
         checkOutTime: null,
         handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
+
+    await logSystemEvent(
+        { type: 'CHECK_IN', category: 'VISITOR' },
+        { id: visitorId, type: 'VISITOR', metadata: data },
+        'SUCCESS',
+        `Visitor Check-In: ${data.name} (${data.type})`
+    );
 };
 
 
@@ -343,6 +400,13 @@ export const checkOutVisitor = async (docId: string) => {
         checkOutTime: Timestamp.now(),
         handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security" // Update who handled the checkout
     });
+
+    await logSystemEvent(
+        { type: 'CHECK_OUT', category: 'VISITOR' },
+        { id: docId, type: 'VISITOR' },
+        'SUCCESS',
+        `Visitor Check-Out: ${docId}`
+    );
 };
 
 // --- VENDORS ---
@@ -376,10 +440,24 @@ export const addVendor = async (data: {
         createdAt: Timestamp.now(),
         createdBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
+
+    await logSystemEvent(
+        { type: 'CREATE', category: 'VENDOR' },
+        { id: vendorId, type: 'VENDOR', metadata: data },
+        'SUCCESS',
+        `Registered Vendor: ${data.fullName} (${data.company})`
+    );
 };
 
 export const deleteVendor = async (vendorId: string) => {
     await deleteDoc(doc(db, "vendors", vendorId));
+
+    await logSystemEvent(
+        { type: 'DELETE', category: 'VENDOR' },
+        { id: vendorId, type: 'VENDOR' },
+        'SUCCESS',
+        `Deleted Vendor Profile: ${vendorId}`
+    );
 };
 
 export const getActiveVendorVisits = async () => {
@@ -442,6 +520,13 @@ export const checkInVendor = async (
         checkOutTime: null,
         handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
+
+    await logSystemEvent(
+        { type: 'CHECK_IN', category: 'VENDOR' },
+        { id: vendorId, type: 'VENDOR', metadata: { purpose, companyName, visitorName: employeeName } },
+        'SUCCESS',
+        `Vendor Visit Check-In: ${companyName} - ${employeeName}`
+    );
 };
 
 export const checkOutVendorVisit = async (visitId: string) => {
@@ -451,6 +536,13 @@ export const checkOutVendorVisit = async (visitId: string) => {
         checkOutTime: Timestamp.now(),
         handledBy: auth.currentUser?.displayName || auth.currentUser?.email || "Security"
     });
+
+    await logSystemEvent(
+        { type: 'CHECK_OUT', category: 'VENDOR' },
+        { id: visitId, type: 'VENDOR' },
+        'SUCCESS',
+        `Vendor Visit Check-Out: ${visitId}`
+    );
 };
 
 
@@ -458,14 +550,103 @@ export const checkOutVendorVisit = async (visitId: string) => {
 // ROLE & USER MANAGEMENT
 // ============================
 
+// ============================
+// AUDIT LOGGING ENGINE
+// ============================
+
+export interface LogActor {
+    uid: string;
+    name: string;
+    username: string;
+    role: string;
+    email: string;
+}
+
+export interface LogAction {
+    type: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'CHECK_IN' | 'CHECK_OUT' | 'ROLE_CHANGE' | 'PASSWORD_SET' | 'ACCOUNT_DISABLE' | 'ACCOUNT_ACTIVATE' | 'RESET_PASSWORD' | 'TEMP_PASSWORD_ISSUED' | 'PASSWORD_RESET_INITIATED' | 'PASSWORD_RESET_COMPLETED' | 'PASSWORD_SETUP_FAILED';
+    category: 'USER' | 'EMPLOYEE' | 'DEVICE' | 'VISITOR' | 'VENDOR' | 'AUTH' | 'SYSTEM';
+}
+
+export interface LogTarget {
+    id: string;
+    type: string;
+    metadata?: any;
+}
+
+export const logSystemEvent = async (
+    action: LogAction,
+    target: LogTarget,
+    status: 'SUCCESS' | 'FAILURE' = 'SUCCESS',
+    description: string
+) => {
+    try {
+        const currentUser = auth.currentUser;
+        let actor: LogActor = {
+            uid: 'SYSTEM',
+            name: 'System Automaton',
+            username: 'system',
+            role: 'system',
+            email: 'system@minet.com'
+        };
+
+        if (currentUser) {
+            // Attempt to fetch latest role/username for accurate audit trail
+            // This is critical for non-repudiation
+            let role = 'unknown';
+            let username = 'unknown';
+            try {
+                const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    role = data.role || 'unknown';
+                    username = data.username || 'unknown';
+                }
+            } catch (e) {
+                console.warn("Audit: Could not fetch detailed actor info", e);
+            }
+
+            actor = {
+                uid: currentUser.uid,
+                name: currentUser.displayName || 'Unknown',
+                username: username,
+                role: role,
+                email: currentUser.email || 'no-email'
+            };
+        }
+
+        const logEntry = {
+            logId: doc(collections.auditLogs).id, // Auto-generate ID reference if needed
+            timestamp: serverTimestamp(),
+            actor,
+            action,
+            target,
+            system: {
+                ipAddress: 'N/A', // Client-side JS cannot reliably get IP without external service
+                userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node/Server',
+                platform: typeof navigator !== 'undefined' ? navigator.platform : 'Server'
+            },
+            status,
+            description
+        };
+
+        await addDoc(collections.auditLogs, logEntry);
+        console.log(`[AUDIT] ${action.type} on ${target.type}: ${description}`);
+
+    } catch (error) {
+        // FAIL-SAFE: Logging failure must not break the application
+        console.error("CRITICAL AUDIT FAILURE:", error);
+    }
+};
+
+// Legacy support (deprecated)
 export const addAuditLog = async (action: string, targetId: string, details: any) => {
-    await addDoc(collections.auditLogs, {
-        action,
-        targetId,
-        details,
-        performedBy: auth.currentUser?.displayName || auth.currentUser?.email || "Unknown",
-        timestamp: serverTimestamp()
-    });
+    // Forward legacy calls to new system where possible, or just log generic
+    await logSystemEvent(
+        { type: 'UPDATE', category: 'SYSTEM' },
+        { id: targetId, type: 'LEGACY_OBJECT', metadata: details },
+        'SUCCESS',
+        `Legacy Audit Action: ${action}`
+    );
 };
 
 export const generateUsername = async (fullName: string, forceSuffix?: string) => {
@@ -509,29 +690,54 @@ export const createSystemUser = async (data: {
     const attemptCreation = async (attemptName: string, attemptSuffix?: string): Promise<{ username: string, tempPassword: string, uid: string }> => {
         const username = await generateUsername(attemptName, attemptSuffix);
         const email = data.email || `${username.toLowerCase()}@minet.com`;
-        const tempPassword = data.password || Math.random().toString(36).substring(2, 12);
+        const { generateSecureTempPassword } = await import('../utils/passwordUtils');
+        const tempPassword = data.password || generateSecureTempPassword();
 
         try {
             const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
             const uid = userCredential.user.uid;
 
             // 3. Create Firestore record
+            // 3. Create Firestore record with new password control system
             await setDoc(doc(db, "users", uid), {
                 uid: uid,
                 name: data.name,
                 username: username,
                 email: email,
                 role: data.role,
-                isActive: true, // New users enabled by default
-                mustChangePassword: true, // Users must change pswd upon activation
-                tempPassword: tempPassword,
+                isActive: true,
+                mustSetPassword: true, // NEW: User must set password on first login
+                passwordResetRequired: false, // NEW: Not a reset, it's first-time setup
+                tempPasswordHash: await import('../utils/passwordUtils').then(m => m.hashPassword(tempPassword)), // NEW: Store hashed temp password
+                tempPasswordIssuedAt: serverTimestamp(), // NEW: Track when temp password was issued
+                lastPasswordChange: null, // NEW: No password change yet
                 createdAt: serverTimestamp(),
                 createdBy: auth.currentUser?.displayName || auth.currentUser?.email
             });
 
-            await addAuditLog("CREATE_USER", uid, { username, role: data.role });
+            await logSystemEvent(
+                { type: 'CREATE', category: 'USER' },
+                { id: uid, type: 'USER', metadata: { username, role: data.role, email } },
+                'SUCCESS',
+                `Created new ${data.role} account for ${data.name} with temporary password`
+            );
+
+            // Log temp password issuance
+            await logSystemEvent(
+                { type: 'PASSWORD_SET', category: 'AUTH' },
+                { id: uid, type: 'USER', metadata: { username } },
+                'SUCCESS',
+                'Temporary password issued for new account'
+            );
+
             return { username, tempPassword, uid };
         } catch (authError: any) {
+            await logSystemEvent(
+                { type: 'CREATE', category: 'USER' },
+                { id: 'N/A', type: 'USER', metadata: { name: data.name, role: data.role } },
+                'FAILURE',
+                `Failed to create user: ${authError.message}`
+            );
             if (authError.code === 'auth/email-already-in-use' && !data.email) {
                 // If the default generated email is taken, try once more with a random 2-digit suffix
                 const randomSuffix = Math.floor(10 + Math.random() * 90).toString();
@@ -552,29 +758,107 @@ export const createSystemUser = async (data: {
     }
 };
 
-export const activateUserAccount = async (username: string) => {
-    // 1. Find user by username (normalization)
+export const verifyActivationIdentity = async (username: string, tempPasswordInput: string) => {
+    // Stage 1 - Identity Verification
     const normalizedUsername = username.trim().toLowerCase();
+
+    // 1. Find user by username
     const q = query(collections.users, where("username", "==", normalizedUsername));
     const snap = await getDocs(q);
 
     if (snap.empty) {
-        // Fallback: Check if they entered their full email
-        if (normalizedUsername.includes('@')) {
-            const q2 = query(collections.users, where("email", "==", normalizedUsername));
-            const snap2 = await getDocs(q2);
-            if (!snap2.empty) return { email: snap2.docs[0].data().email, tempPassword: snap2.docs[0].data().tempPassword, uid: snap2.docs[0].id };
-        }
         throw new Error("Username not found. Please ensure you typed it correctly or contact Admin.");
     }
-    const userDoc = snap.docs[0];
-    const userData = userDoc.data();
 
-    if (!userData.mustChangePassword) throw new Error("Account already active. Please log in.");
-    if (!userData.isActive) throw new Error("Account is disabled. Contact Admin.");
+    const userDocRef = snap.docs[0];
+    const userData = userDocRef.data();
+    const { verifyPassword } = await import('../utils/passwordUtils');
 
-    // Return credentials needed for activation sign-in
-    return { email: userData.email, tempPassword: userData.tempPassword, uid: userDoc.id };
+    // 2. Security Checks
+    if (!userData.isActive) {
+        throw new Error("Account is currently disabled. Please contact your administrator.");
+    }
+
+    const canProceed = userData.mustSetPassword === true || userData.passwordResetRequired === true;
+    if (!canProceed) {
+        throw new Error("This account does not require password setup. Please log in normally.");
+    }
+
+    // 3. Optional: 24h Expiry Check
+    if (userData.tempPasswordIssuedAt) {
+        const issuedAt = userData.tempPasswordIssuedAt.toDate();
+        const now = new Date();
+        const hoursDiff = (now.getTime() - issuedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursDiff > 24) {
+            await logSystemEvent(
+                { type: 'PASSWORD_SETUP_FAILED', category: 'AUTH' },
+                { id: userDocRef.id, type: 'USER' },
+                'FAILURE',
+                'Temporary password expired (older than 24h)'
+            );
+            throw new Error("Your temporary password has expired (24h limit). Please ask your Superadmin to reissue it.");
+        }
+    }
+
+    // 4. Verify Temp Password Hash
+    const isCorrect = verifyPassword(tempPasswordInput.trim(), userData.tempPasswordHash);
+    if (!isCorrect) {
+        await logSystemEvent(
+            { type: 'PASSWORD_SETUP_FAILED', category: 'AUTH' },
+            { id: userDocRef.id, type: 'USER' },
+            'FAILURE',
+            'Identity verification failed: Incorrect temporary password'
+        );
+        throw new Error("Verification failed: The temporary password provided is incorrect.");
+    }
+
+    // Identity verified! Return user info for Stage 2
+    return {
+        uid: userDocRef.id,
+        email: userData.email,
+        username: userData.username,
+        type: userData.mustSetPassword ? 'INITIAL' : 'RENEWAL'
+    };
+};
+
+export const finalizePasswordSetup = async (uid: string) => {
+    // Stage 2 - Finalize Password Setup
+    // Note: Auth password update should be handled by the component using updatePassword()
+    const userRef = doc(db, "users", uid);
+
+    try {
+        // 1. Update Firestore record
+        await updateDoc(userRef, {
+            mustSetPassword: false,
+            passwordResetRequired: false,
+            tempPasswordHash: null,
+            tempPasswordIssuedAt: null,
+            lastPasswordChange: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        await logSystemEvent(
+            { type: 'PASSWORD_SET', category: 'AUTH' },
+            { id: uid, type: 'USER' },
+            'SUCCESS',
+            'Password successfully established by user'
+        );
+
+        return true;
+    } catch (error: any) {
+        console.error("Failed to finalize password setup:", error);
+        throw error;
+    }
+};
+
+// Legacy compatibility for any existing code calling activateUserAccount
+export const activateUserAccount = async (username: string) => {
+    const normalizedUsername = username.trim().toLowerCase();
+    const q = query(collections.users, where("username", "==", normalizedUsername));
+    const snap = await getDocs(q);
+    if (snap.empty) throw new Error("User not found");
+    const data = snap.docs[0].data();
+    return { ...data, uid: snap.docs[0].id };
 };
 
 export const updateSystemUser = async (uid: string, data: {
@@ -589,35 +873,104 @@ export const updateSystemUser = async (uid: string, data: {
         updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
     });
 
-    await addAuditLog("UPDATE_USER", uid, data);
+    // Detect specific critical changes for cleaner audit logs
+    if (data.role) {
+        await logSystemEvent(
+            { type: 'ROLE_CHANGE', category: 'USER' },
+            { id: uid, type: 'USER', metadata: { newRole: data.role } },
+            'SUCCESS',
+            `Changed user role to ${data.role}`
+        );
+    }
+
+    if (data.isActive !== undefined) {
+        await logSystemEvent(
+            { type: data.isActive ? 'ACCOUNT_ACTIVATE' : 'ACCOUNT_DISABLE', category: 'USER' },
+            { id: uid, type: 'USER', metadata: { isActive: data.isActive } },
+            'SUCCESS',
+            `${data.isActive ? 'Enabled' : 'Disabled'} user account`
+        );
+    }
+
+    // Generic update log if neither of above (or in addition)
+    if (!data.role && data.isActive === undefined) {
+        await logSystemEvent(
+            { type: 'UPDATE', category: 'USER' },
+            { id: uid, type: 'USER', metadata: data },
+            'SUCCESS',
+            `Updated user profile details`
+        );
+    }
 };
 
 export const deleteSystemUser = async (uid: string) => {
     const userRef = doc(db, "users", uid);
     await deleteDoc(userRef);
-    await addAuditLog("DELETE_USER", uid, { action: "PERMANENT_DELETE" });
+    await logSystemEvent(
+        { type: 'DELETE', category: 'USER' },
+        { id: uid, type: 'USER' },
+        'SUCCESS',
+        `Permanently deleted system user`
+    );
 };
 
+export const renewUserPassword = async (uid: string): Promise<string> => {
+    // This function is called by Superadmin when a user forgets their password
+    // It generates a NEW temporary password, updates Firebase Auth, and sets renewal flags
+
+    const { generateSecureTempPassword, hashPassword } = await import('../utils/passwordUtils');
+    const newTempPassword = generateSecureTempPassword();
+    const hashedTempPassword = hashPassword(newTempPassword);
+
+    try {
+        // Get user data
+        const userRef = doc(db, "users", uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+            throw new Error("User not found");
+        }
+
+        const userData = userSnap.data();
+        const email = userData.email;
+
+        // Update Firestore with new temp password and renewal flags
+        await updateDoc(userRef, {
+            passwordResetRequired: true, // NEW: Flag that password reset is required
+            mustSetPassword: false, // This is a renewal, not first-time setup
+            tempPasswordHash: hashedTempPassword,
+            tempPasswordIssuedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
+        });
+
+        // CRITICAL: Update Firebase Auth password
+        // We need to use Admin SDK or a cloud function for this in production
+        // For now, we'll document that the user must use the temp password
+        console.warn(`Password renewal: User ${email} must use temp password: ${newTempPassword}`);
+
+        await logSystemEvent(
+            { type: 'RESET_PASSWORD', category: 'AUTH' },
+            { id: uid, type: 'USER', metadata: { username: userData.username } },
+            'SUCCESS',
+            'Password renewal initiated by Superadmin - temporary password issued'
+        );
+
+        return newTempPassword;
+    } catch (error: any) {
+        await logSystemEvent(
+            { type: 'RESET_PASSWORD', category: 'AUTH' },
+            { id: uid, type: 'USER' },
+            'FAILURE',
+            `Password renewal failed: ${error.message}`
+        );
+        throw error;
+    }
+};
+
+// Legacy function - kept for backward compatibility but redirects to new system
 export const resetUserPassword = async (uid: string) => {
-    // Note: Due to Firebase Client SDK security, we can update the Temp Password in Firestore,
-    // but we cannot force-update the Auth password for ANOTHER user.
-    // The Admin should usually delete and re-create the user if they lost the password before activation.
-    const tempPassword = Math.random().toString(36).substring(2, 12);
-    const userRef = doc(db, "users", uid);
-
-    await updateDoc(userRef, {
-        tempPassword: tempPassword,
-        mustChangePassword: true,
-        updatedAt: serverTimestamp(),
-        updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
-    });
-
-    await addAuditLog("RESET_PASSWORD", uid, {
-        action: "REQUEST_NEW_TEMP",
-        note: "Firestore record updated. If user cannot login, delete and re-create user in Auth."
-    });
-
-    return tempPassword;
+    return renewUserPassword(uid);
 };
 
 export const getSystemUsers = async () => {

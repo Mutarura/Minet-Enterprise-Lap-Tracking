@@ -84,7 +84,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
                     <Edit3 size={18} />
                 </button>
                 <button
-                    onClick={() => onDelete(device.serialNumber)}
+                    onClick={() => onDelete(device.id)}
                     style={{ padding: '0.5rem', background: '#fee2e2', color: 'var(--danger)', border: 'none', borderRadius: '0.5rem' }}
                 >
                     <Trash2 size={18} />

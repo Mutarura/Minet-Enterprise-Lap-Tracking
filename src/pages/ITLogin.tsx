@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../services/firebase';
+import { auth, db, logSystemEvent } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
@@ -52,12 +52,22 @@ const ITLogin = () => {
 
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
+            // Fetch latest user data to check flags
+            const { getDoc, doc } = await import('firebase/firestore');
+            const userRef = doc(db, "users", userCredential.user.uid);
+            const userSnap = await getDoc(userRef);
+            const userData = userSnap.data();
+
+            if (userData && (userData.mustSetPassword || userData.passwordResetRequired)) {
+                // Redirect to activation/renewal flow
+                navigate(`/activate?username=${userData.username}`);
+                return;
+            }
+
             // Healing: Ensure the 'Admin' user document exists and has the 'superadmin' role
             if (isAdminShortcut) {
-                const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+                const { setDoc, serverTimestamp } = await import('firebase/firestore');
                 // Use UID for the document ID, NOT the email
-                const userRef = doc(db, "users", userCredential.user.uid);
-
                 // Update or create the profile with correct role and UID mapping
                 await setDoc(userRef, {
                     uid: userCredential.user.uid,
@@ -70,9 +80,23 @@ const ITLogin = () => {
                 }, { merge: true });
             }
 
+            await logSystemEvent(
+                { type: 'LOGIN', category: 'AUTH' },
+                { id: userCredential.user.uid, type: 'USER', metadata: { email } },
+                'SUCCESS',
+                'IT Admin Portal Login'
+            );
+
             navigate('/dashboard/it');
         } catch (err: any) {
             console.error("Login Check:", err.code, err.message);
+
+            await logSystemEvent(
+                { type: 'LOGIN', category: 'AUTH' },
+                { id: 'unknown', type: 'USER', metadata: { username: cleanUsername } },
+                'FAILURE',
+                `Login failed: ${err.message}`
+            );
             if (err.message === "ACCOUNT_DISABLED") {
                 setError('This account has been deactivated. Please contact support.');
             } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
@@ -189,7 +213,7 @@ const ITLogin = () => {
                             onClick={() => navigate('/activate')}
                             style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
                         >
-                            New account? Set password
+                            Set up / Renew password
                         </button>
 
                         <button

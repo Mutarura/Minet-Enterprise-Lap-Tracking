@@ -17,7 +17,9 @@ import {
     subscribeToVendors,
     subscribeToActiveVendorVisits,
     subscribeToTodayVisitors,
-    subscribeToTodayVendorVisits
+
+    subscribeToTodayVendorVisits,
+    logSystemEvent
 } from '../services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -370,8 +372,8 @@ const SecurityDashboard = () => {
     };
 
     const filteredLogs = logs.filter(log =>
-        log.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.empId.toLowerCase().includes(searchTerm.toLowerCase())
+        String(log.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(log.empId || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -407,6 +409,12 @@ const SecurityDashboard = () => {
                     <button
                         onClick={async () => {
                             if (confirm('Logout?')) {
+                                await logSystemEvent(
+                                    { type: 'LOGOUT', category: 'AUTH' },
+                                    { id: auth.currentUser?.uid || 'unknown', type: 'USER' },
+                                    'SUCCESS',
+                                    'Security User initiated logout'
+                                );
                                 await signOut(auth);
                                 window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
                             }
@@ -587,7 +595,7 @@ const SecurityDashboard = () => {
                                         {/* Active Visitors List */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Currently On-Site ({visitors.length})</h3>
-                                            {visitors.filter(v => v.name.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
+                                            {visitors.filter(v => String(v.name || '').toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
                                                 <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem' }}>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -688,7 +696,7 @@ const SecurityDashboard = () => {
                                         {/* Registered Vendors List */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Registered Vendors</h3>
-                                            {vendors.filter(v => v.fullName.toLowerCase().includes(searchVisitor.toLowerCase()) || v.company?.toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
+                                            {vendors.filter(v => String(v.fullName || '').toLowerCase().includes(searchVisitor.toLowerCase()) || String(v.company || '').toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
                                                 <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem' }}>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

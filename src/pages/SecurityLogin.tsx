@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../services/firebase';
+import { auth, db, logSystemEvent } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
@@ -39,10 +39,38 @@ const SecurityLogin = () => {
             }
             email = snap.docs[0].data().email;
 
-            await signInWithEmailAndPassword(auth, email, password);
+            const userCred = await signInWithEmailAndPassword(auth, email, password);
+
+            // Fetch latest user data to check flags
+            const { getDoc, doc } = await import('firebase/firestore');
+            const userRef = doc(db, "users", userCred.user.uid);
+            const userSnap = await getDoc(userRef);
+            const userData = userSnap.data();
+
+            if (userData && (userData.mustSetPassword || userData.passwordResetRequired)) {
+                // Redirect to activation/renewal flow
+                navigate(`/activate?username=${userData.username}`);
+                return;
+            }
+
+            await logSystemEvent(
+                { type: 'LOGIN', category: 'AUTH' },
+                { id: userCred.user.uid, type: 'USER', metadata: { email } },
+                'SUCCESS',
+                'Security Portal Login'
+            );
+
             navigate('/dashboard/security');
         } catch (err: any) {
             console.error("Login Error:", err.code, err.message);
+
+            await logSystemEvent(
+                { type: 'LOGIN', category: 'AUTH' },
+                { id: 'unknown', type: 'USER', metadata: { username: cleanUsername } },
+                'FAILURE',
+                `Login failed: ${err.message}`
+            );
+
             setError('Invalid username or password.');
         } finally {
             setLoading(false);
@@ -156,7 +184,7 @@ const SecurityLogin = () => {
                             onClick={() => navigate('/activate')}
                             style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
                         >
-                            New account? Set password
+                            Set up / Renew password
                         </button>
                     </div>
                 </div>
