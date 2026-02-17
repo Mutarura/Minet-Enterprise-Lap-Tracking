@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Database Check</title>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+        // Your Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyAJ5z1U0Uy4KiYVjfRNNKike55PC0g35b4",
+            authDomain: "minet-insurance-laptoptracking.firebaseapp.com",
+            projectId: "minet-insurance-laptoptracking",
+            storageBucket: "minet-insurance-laptoptracking.firebasestorage.app",
+            messagingSenderId: "460757682837",
+            appId: "1:460757682837:web:1c803cdc57b71636e2699c"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        async function checkDatabase() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<p>🔍 Checking database...</p>';
+
+            try {
+                // Check auth
+                const user = auth.currentUser;
+                if (!user) {
+                    output.innerHTML += '<p style="color: orange;">⚠️ Not logged in. Please log in first at localhost:5173</p>';
+                    return;
+                }
+
+                output.innerHTML += `<p>✅ Logged in as: ${user.email}</p>`;
+
+                // Check employees
+                const employeesSnap = await getDocs(collection(db, 'employees'));
+                output.innerHTML += `<p><strong>📋 Employees in database: ${employeesSnap.size}</strong></p>`;
+
+                if (employeesSnap.size > 0) {
+                    output.innerHTML += '<ul>';
+                    employeesSnap.forEach(doc => {
+                        const data = doc.data();
+                        output.innerHTML += `<li>${data.name} (${data.empId}) - Photo: ${data.photoURL ? '✅' : '❌'}</li>`;
+                    });
+                    output.innerHTML += '</ul>';
+                } else {
+                    output.innerHTML += '<p style="color: red;">❌ No employees found in database!</p>';
+                }
+
+                // Check devices
+                const devicesSnap = await getDocs(collection(db, 'devices'));
+                output.innerHTML += `<p><strong>💻 Devices in database: ${devicesSnap.size}</strong></p>`;
+
+            } catch (error) {
+                output.innerHTML += `<p style="color: red;">❌ Error: ${error.message}</p>`;
+                console.error(error);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                checkDatabase();
+            } else {
+                document.getElementById('output').innerHTML = '<p style="color: orange;">⚠️ Please log in at <a href="http://localhost:5173">localhost:5173</a> first, then refresh this page.</p>';
+            }
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        #output {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #e21a22;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🔍 Minet Database Checker</h1>
+    <div id="output">
+        <p>Loading...</p>
+    </div>
+</body>
+
+</html>

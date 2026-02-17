@@ -1,5 +1,5 @@
 import { db, secondaryAuth } from "../services/firebase";
-import { doc, setDoc, addDoc, collection, Timestamp, getDocs, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, collection, Timestamp, getDocs, deleteDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 
 const seedUsers = async () => {
@@ -99,7 +99,8 @@ export const seedDatabase = async () => {
     console.log("Seeding started...");
     try {
         console.log("1. Cleaning existing data...");
-        const collectionsList = ["employees", "devices", "logs", "users"];
+        // Don't delete users collection to avoid permission issues
+        const collectionsList = ["employees", "devices", "logs"];
         for (const coll of collectionsList) {
             console.log(`Clearing ${coll}...`);
             const snap = await getDocs(collection(db, coll));
@@ -113,7 +114,7 @@ export const seedDatabase = async () => {
 
         console.log("3. Seeding employees...");
         for (const emp of employees) {
-            await addDoc(collection(db, "employees"), {
+            await setDoc(doc(db, "employees", emp.empId), {
                 ...emp,
                 photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=random`,
                 createdAt: Timestamp.now(),

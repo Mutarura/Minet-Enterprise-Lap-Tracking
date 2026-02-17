@@ -19,7 +19,7 @@ import {
     subscribeToEmployees,
     subscribeToDevices
 } from '../services/firebase';
-import { seedDatabase } from '../utils/seedData';
+
 import { signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -48,7 +48,7 @@ import DeviceCard from '../components/DeviceCard';
 import Modal from '../components/Modal';
 // @ts-ignore
 import { generateQRCode } from '../utils/qr';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -113,13 +113,35 @@ const AdminDashboard = () => {
         resetMobileState();
     };
 
+    // 1. Initial Profile/Role Fetching
     useEffect(() => {
+        const checkRole = async () => {
+            if (auth.currentUser) {
+                const { getDoc, doc } = await import('firebase/firestore');
+                const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    if (data.role === 'superadmin' && userRole === null) {
+                        setActiveTab('users');
+                    }
+                    setUserRole(data.role);
+                    setCurrentUserProfile(data);
+                } else if (auth.currentUser.email === 'admin@minet.com') {
+                    if (userRole === null) setActiveTab('users');
+                    setUserRole('superadmin');
+                }
+            }
+        };
+        checkRole();
+    }, []);
+
+    // 2. Data Subscriptions
+    useEffect(() => {
+
         const unsubEmps = subscribeToEmployees((data) => {
-            console.log("Real-time Emps Update:", data.length);
             setEmployees(data);
         });
         const unsubDevs = subscribeToDevices((data) => {
-            console.log("Real-time Devs Update:", data.length);
             setDevices(data);
         });
 
@@ -128,7 +150,6 @@ const AdminDashboard = () => {
             unsubUsers = subscribeToSystemUsers((data) => setSystemUsers(data));
         }
 
-        checkRole();
         loadData(); // Cold start fetch
 
         return () => {
@@ -136,29 +157,7 @@ const AdminDashboard = () => {
             unsubDevs();
             unsubUsers();
         };
-    }, [activeTab, userRole]);
-
-    const checkRole = async () => {
-        if (auth.currentUser) {
-            const { getDoc, doc } = await import('firebase/firestore');
-            const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-            if (userDoc.exists()) {
-                const data = userDoc.data();
-
-                // Only default to 'users' tab on initial load for superadmins
-                if (data.role === 'superadmin' && userRole === null) {
-                    setActiveTab('users');
-                }
-
-                setUserRole(data.role);
-                setCurrentUserProfile(data);
-            } else if (auth.currentUser.email === 'admin@minet.com') {
-                if (userRole === null) setActiveTab('users');
-                setUserRole('superadmin');
-            }
-        }
-    };
-
+    }, [activeTab, userRole === 'superadmin']); // Only re-subscribe if tab changes OR superadmin status changes
 
     const loadData = async (refreshAlerts = false) => {
         try {
@@ -172,7 +171,7 @@ const AdminDashboard = () => {
                 setAlerts(activeAlerts);
             }
         } catch (err) {
-            console.error("Data load error:", err);
+            console.error("❌ Data load error:", err);
         } finally {
             setAlertsLoading(false);
         }
@@ -345,8 +344,9 @@ const AdminDashboard = () => {
     };
 
     const filteredEmployees = employees
-        .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.empId.toLowerCase().includes(searchTerm.toLowerCase()))
-        .slice(0, 10); // Show 10 by default
+        .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.empId.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    console.log("🔍 Filtered employees for display:", filteredEmployees.length, filteredEmployees);
 
     const filteredDevices = devices.filter(d =>
         (activeTab === 'company' ? d.type === 'COMPANY' : d.type === 'BYOD') &&
@@ -380,39 +380,6 @@ const AdminDashboard = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    {userRole === 'superadmin' && (
-                        <button
-                            onClick={async () => {
-                                if (confirm("Initialize Database with default employees and devices? This will clear current data.")) {
-                                    setIsSubmitting(true);
-                                    try {
-                                        await seedDatabase();
-                                        loadData(true);
-                                    } catch (e: any) {
-                                        alert(e.message);
-                                    } finally {
-                                        setIsSubmitting(false);
-                                    }
-                                }
-                            }}
-                            disabled={isSubmitting}
-                            style={{
-                                background: 'white',
-                                border: '1px solid #cbd5e1',
-                                color: '#475569',
-                                fontWeight: '700',
-                                padding: '0.5rem 1rem',
-                                borderRadius: 'var(--radius-sm)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.5rem',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem'
-                            }}
-                        >
-                            <RefreshCw size={16} /> Seed Test Data
-                        </button>
-                    )}
                     <button
                         onClick={async () => {
                             if (confirm('Are you sure you want to logout?')) {

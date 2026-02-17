@@ -20,8 +20,8 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isSignedIn() && (
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'superadmin') ||
-        request.auth.token.email == 'admin@minet.com'
+        request.auth.token.email == 'admin@minet.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'superadmin')
       );
     }
 
@@ -52,12 +52,14 @@ service cloud.firestore {
     match /employees/{empId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+      allow delete: if isSuperAdmin(); // Explicit delete for seeding
     }
 
     // Devices Collection
     match /devices/{serial} {
       allow read: if isSignedIn();
       allow write: if isAdmin() || isSecurity();
+      allow delete: if isSuperAdmin(); // Explicit delete for seeding
     }
 
     // Logs, Visitors, Vendors

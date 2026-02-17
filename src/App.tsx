@@ -18,9 +18,10 @@ import PrintLabel from './pages/PrintLabel';
 import ActivateAccount from './pages/ActivateAccount';
 
 const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' | 'superadmin' }) => {
-  const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
+  const [mustActivate, setMustActivate] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
             const data = userDoc.data();
             setUserRole(data.role);
             setIsActive(data.isActive !== false);
+            setMustActivate(!!data.mustChangePassword);
 
             // Update last login
             const { serverTimestamp, updateDoc, doc: fsDoc } = await import('firebase/firestore');
@@ -43,6 +45,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
             // Fallback for bootstrap admin
             setUserRole('superadmin');
             setIsActive(true);
+            setMustActivate(false);
           }
         } catch (e) {
           console.error("Error fetching role", e);
@@ -50,6 +53,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
           if (currentUser.email === 'admin@minet.com') {
             setUserRole('superadmin');
             setIsActive(true);
+            setMustActivate(false);
           }
         }
       }
@@ -64,29 +68,10 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
     </div>
   );
 
-  if (user && userRole && isActive) {
-    // Check Firestore data for mustChangePassword
-    // This is slightly redundant but safe
-  }
-
   if (!user) {
     const loginPath = (role === 'security') ? '/login/security' : '/login/it';
     return <Navigate to={loginPath} replace />;
   }
-
-  // Redirect if password must be changed
-  const [mustActivate, setMustActivate] = useState(false);
-  useEffect(() => {
-    const checkActivation = async () => {
-      if (user) {
-        const ud = await getDoc(doc(db, "users", user.uid));
-        if (ud.exists() && ud.data().mustChangePassword) {
-          setMustActivate(true);
-        }
-      }
-    };
-    checkActivation();
-  }, [user]);
 
   if (mustActivate) {
     return <Navigate to="/activate" replace />;
