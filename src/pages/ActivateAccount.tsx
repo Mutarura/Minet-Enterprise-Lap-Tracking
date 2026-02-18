@@ -81,20 +81,23 @@ const ActivateAccount = () => {
         try {
             console.log("Stage 2: Finalizing password for", userData.email);
 
-            // 2. Authenticate with Temp Password to allow update
             let userToUpdate = auth.currentUser;
 
-            // Force sign-in to ensure we have credentials to change password
-            try {
-                const userCred = await signInWithEmailAndPassword(auth, userData.email, trimmedTemp);
-                userToUpdate = userCred.user;
-            } catch (authErr: any) {
-                console.error("Stage 2: Auth Error", authErr);
-                throw new Error("Could not authenticate session. Please try restarting the process.");
+            // Ensure we have a valid auth session for this account using the temporary password
+            if (!userToUpdate || userToUpdate.email?.toLowerCase() !== userData.email.toLowerCase()) {
+                try {
+                    const userCred = await signInWithEmailAndPassword(auth, userData.email, trimmedTemp);
+                    userToUpdate = userCred.user;
+                } catch (authErr: any) {
+                    console.error("Stage 2: Auth Error", authErr);
+                    const friendly =
+                        authErr.code === 'auth/wrong-password' || authErr.code === 'auth/invalid-credential'
+                            ? "We could not authenticate using this temporary password. It may have already been used or expired. Please ask your Superadmin to renew your password from the dashboard."
+                            : "Could not authenticate session. Please try restarting the process or contact your Superadmin.";
+                    throw new Error(friendly);
+                }
             }
 
-            // 3. Update Auth Password
-            if (!userToUpdate) throw new Error("No active session found.");
             await updatePassword(userToUpdate, trimmedPassword);
             console.log("Stage 2: Auth password updated");
 

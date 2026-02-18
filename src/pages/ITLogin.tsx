@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db, logSystemEvent } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
@@ -11,16 +11,6 @@ const ITLogin = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-
-    // Check if user is already logged in
-    React.useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                navigate('/dashboard/it');
-            }
-        });
-        return () => unsubscribe();
-    }, [navigate]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -52,17 +42,10 @@ const ITLogin = () => {
 
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-            // Fetch latest user data to check flags
+            // Fetch latest user data for role and status (ensures profile exists)
             const { getDoc, doc } = await import('firebase/firestore');
             const userRef = doc(db, "users", userCredential.user.uid);
-            const userSnap = await getDoc(userRef);
-            const userData = userSnap.data();
-
-            if (userData && (userData.mustSetPassword || userData.passwordResetRequired)) {
-                // Redirect to activation/renewal flow
-                navigate(`/activate?username=${userData.username}`);
-                return;
-            }
+            await getDoc(userRef);
 
             // Healing: Ensure the 'Admin' user document exists and has the 'superadmin' role
             if (isAdminShortcut) {

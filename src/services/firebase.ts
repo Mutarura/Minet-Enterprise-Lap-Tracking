@@ -687,18 +687,20 @@ export const createSystemUser = async (data: {
     password?: string; // Added for seeding
 }) => {
     // Helper to attempt creation
-    const attemptCreation = async (attemptName: string, attemptSuffix?: string): Promise<{ username: string, tempPassword: string, uid: string }> => {
+    const attemptCreation = async (attemptName: string, attemptSuffix?: string): Promise<{ username: string, email: string, uid: string }> => {
         const username = await generateUsername(attemptName, attemptSuffix);
-        const email = data.email || `${username.toLowerCase()}@minet.com`;
+        const email = (data.email || '').trim();
+        if (!email) {
+            throw new Error("Email address is required to create a system user.");
+        }
+
         const { generateSecureTempPassword } = await import('../utils/passwordUtils');
-        const tempPassword = data.password || generateSecureTempPassword();
+        const internalPassword = data.password || generateSecureTempPassword();
 
         try {
-            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, internalPassword);
             const uid = userCredential.user.uid;
 
-            // 3. Create Firestore record
-            // 3. Create Firestore record with new password control system
             await setDoc(doc(db, "users", uid), {
                 uid: uid,
                 name: data.name,
@@ -706,31 +708,30 @@ export const createSystemUser = async (data: {
                 email: email,
                 role: data.role,
                 isActive: true,
-                mustSetPassword: true, // NEW: User must set password on first login
-                passwordResetRequired: false, // NEW: Not a reset, it's first-time setup
-                tempPasswordHash: await import('../utils/passwordUtils').then(m => m.hashPassword(tempPassword)), // NEW: Store hashed temp password
-                tempPasswordIssuedAt: serverTimestamp(), // NEW: Track when temp password was issued
-                lastPasswordChange: null, // NEW: No password change yet
+                lastPasswordChange: null,
                 createdAt: serverTimestamp(),
                 createdBy: auth.currentUser?.displayName || auth.currentUser?.email
             });
+
+            // Send password setup email so the user can choose their own password
+            const { sendPasswordResetEmail } = await import('firebase/auth');
+            await sendPasswordResetEmail(auth, email);
 
             await logSystemEvent(
                 { type: 'CREATE', category: 'USER' },
                 { id: uid, type: 'USER', metadata: { username, role: data.role, email } },
                 'SUCCESS',
-                `Created new ${data.role} account for ${data.name} with temporary password`
+                `Created new ${data.role} account for ${data.name} and sent password setup email`
             );
 
-            // Log temp password issuance
             await logSystemEvent(
-                { type: 'PASSWORD_SET', category: 'AUTH' },
+                { type: 'PASSWORD_RESET_INITIATED', category: 'AUTH' },
                 { id: uid, type: 'USER', metadata: { username } },
                 'SUCCESS',
-                'Temporary password issued for new account'
+                'Password setup email sent for new account'
             );
 
-            return { username, tempPassword, uid };
+            return { username, email, uid };
         } catch (authError: any) {
             await logSystemEvent(
                 { type: 'CREATE', category: 'USER' },
@@ -865,6 +866,7 @@ export const updateSystemUser = async (uid: string, data: {
     role?: "superadmin" | "admin" | "security";
     isActive?: boolean;
     name?: string;
+    email?: string;
 }) => {
     const userRef = doc(db, "users", uid);
     await updateDoc(userRef, {
@@ -928,14 +930,17 @@ export const renewUserPassword = async (uid: string) => {
         }
 
         const userData = userSnap.data();
-        const email = userData.email;
+        const email = (userData.email || '').trim();
+
+        if (!email) {
+            throw new Error("This user does not have a valid email configured. Please edit the user and add a correct email address, then try again.");
+        }
 
         const { sendPasswordResetEmail } = await import('firebase/auth');
         await sendPasswordResetEmail(auth, email);
 
-        // Update Firestore to track that a reset was initiated
+        // Optional: Track that a reset was initiated (without forcing /activate flow)
         await updateDoc(userRef, {
-            passwordResetRequired: true,
             updatedAt: serverTimestamp(),
             updatedBy: auth.currentUser?.displayName || auth.currentUser?.email
         });

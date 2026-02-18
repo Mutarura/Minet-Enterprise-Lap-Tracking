@@ -64,7 +64,7 @@ const AdminDashboard = () => {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
-    const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, tempPassword: string } | null>(null);
+    const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, email: string } | null>(null);
 
     const navigate = useNavigate();
 
@@ -88,7 +88,7 @@ const AdminDashboard = () => {
     const [assignSearch, setAssignSearch] = useState('');
     const [showEmpFormModal, setShowEmpFormModal] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
-    const [userForm, setUserForm] = useState({ name: '', role: 'admin' as any });
+    const [userForm, setUserForm] = useState({ name: '', role: 'admin' as any, email: '' });
     const [editingUser, setEditingUser] = useState<any>(null);
     const [detailsHighlight, setDetailsHighlight] = useState(false);
     const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
@@ -866,7 +866,7 @@ const AdminDashboard = () => {
                                 </div>
                                 <button onClick={() => {
                                     setEditingUser(null);
-                                    setUserForm({ name: '', role: 'admin' });
+                                    setUserForm({ name: '', role: 'admin', email: '' });
                                     setShowUserModal(true);
                                 }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <Plus size={20} /> Create User
@@ -899,7 +899,7 @@ const AdminDashboard = () => {
                                             <button
                                                 onClick={() => {
                                                     setEditingUser(user);
-                                                    setUserForm({ name: user.name, role: user.role });
+                                                    setUserForm({ name: user.name, role: user.role, email: user.email || '' });
                                                     setShowUserModal(true);
                                                 }}
                                                 style={{ background: 'white', border: '1px solid #e2e8f0', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer' }}
@@ -1154,13 +1154,15 @@ const AdminDashboard = () => {
                         if (editingUser) {
                             await updateSystemUser(editingUser.id, {
                                 name: userForm.name,
-                                role: userForm.role
+                                role: userForm.role,
+                                email: userForm.email || undefined
                             });
                             alert("User updated successfully");
                         } else {
                             const result = await createSystemUser({
                                 name: userForm.name,
-                                role: userForm.role
+                                role: userForm.role,
+                                email: userForm.email || undefined
                             });
                             setNewAccountInfo(result);
                             setShowSuccessModal(true);
@@ -1175,6 +1177,18 @@ const AdminDashboard = () => {
                     <div>
                         <label style={labelStyle}>Full Name</label>
                         <input value={userForm.name} onChange={e => setUserForm({ ...userForm, name: e.target.value })} style={inputStyle} required />
+                    </div>
+
+                    <div>
+                        <label style={labelStyle}>Email</label>
+                        <input
+                            type="email"
+                            value={userForm.email}
+                            onChange={e => setUserForm({ ...userForm, email: e.target.value })}
+                            style={inputStyle}
+                            placeholder="e.g. john.doe@minet.com"
+                            required
+                        />
                     </div>
 
                     <div>
@@ -1197,7 +1211,7 @@ const AdminDashboard = () => {
 
                     {!editingUser && (
                         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600' }}>
-                            * Username and temporary password will be auto-generated.
+                            * Username will be auto-generated and a secure password setup email will be sent to the user.
                         </p>
                     )}
 
@@ -1215,12 +1229,6 @@ const AdminDashboard = () => {
                         <CheckCircle2 size={64} style={{ margin: '0 auto' }} />
                     </div>
 
-                    <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem', textAlign: 'left' }}>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e', fontWeight: '500' }}>
-                            <strong>SECURITY NOTICE:</strong> This password is only shown ONCE. Please ensure the user receives it securely. It will be required for account activation/renewal.
-                        </p>
-                    </div>
-
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
                         <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
                             <label style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>Username (Case Sensitive)</label>
@@ -1231,16 +1239,16 @@ const AdminDashboard = () => {
                         </div>
 
                         <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'left' }}>
-                            <label style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>Temporary Password</label>
+                            <label style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>Email</label>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--primary)', fontFamily: 'monospace' }}>{newAccountInfo?.tempPassword}</div>
-                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.tempPassword || ''); alert('Password copied!'); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Copy</button>
+                                <div style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--secondary)' }}>{newAccountInfo?.email}</div>
+                                <button onClick={() => { navigator.clipboard.writeText(newAccountInfo?.email || ''); alert('Email copied!'); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Copy</button>
                             </div>
                         </div>
                     </div>
 
                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.5rem' }}>
-                        The user can now go to the login page and click <strong>"Set up / Renew password"</strong> to complete the process.
+                        A secure email has been sent to this address with a link to set their password. The password itself is never shown here.
                     </p>
 
                     <button onClick={() => setShowSuccessModal(false)} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
