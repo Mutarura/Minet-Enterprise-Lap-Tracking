@@ -163,12 +163,14 @@ const SecurityLogin = () => {
                     </form>
 
                     <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                        {/* Link removed as temp password is no longer exposed to users
                         <button
                             onClick={() => navigate('/activate')}
                             style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
                         >
                             Set up / Renew password
                         </button>
+                        */}
                     </div>
                 </div>
             </div>

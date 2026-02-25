@@ -192,33 +192,16 @@ const ITLogin = () => {
                     </form>
 
                     <div style={{ marginTop: '1.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {/* Link removed as temp password is no longer exposed to users
                         <button
                             onClick={() => navigate('/activate')}
                             style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
                         >
                             Set up / Renew password
                         </button>
+                        */}
 
-                        <button
-                            onClick={async () => {
-                                if (confirm("Initialize Superadmin credentials? This is only for first-time setup or recovery.")) {
-                                    setLoading(true);
-                                    try {
-                                        // @ts-ignore
-                                        const { bootstrapAdmin } = await import('../utils/seedData');
-                                        await bootstrapAdmin();
-                                        alert("System admin initialized. Try logging in now.");
-                                    } catch (e: any) {
-                                        alert(e.message);
-                                    } finally {
-                                        setLoading(false);
-                                    }
-                                }
-                            }}
-                            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.7rem', cursor: 'pointer' }}
-                        >
-                            Initial setup / Restore Admin
-                        </button>
+                        {/* "Restore Admin" button removed by request */}
                     </div>
                 </div>
             </div>
