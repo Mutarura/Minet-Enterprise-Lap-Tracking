@@ -187,7 +187,7 @@ const ITLogin = () => {
                         </div>
 
                         <button type="submit" className="btn-primary" disabled={loading} style={{ height: '3.25rem', marginTop: '1rem', width: '100%' }}>
-                            {loading ? 'Verifying...' : 'LOGIN TO INVENTORY'}
+                            {loading ? 'Verifying...' : 'Log in to Dashboard'}
                         </button>
                     </form>
 

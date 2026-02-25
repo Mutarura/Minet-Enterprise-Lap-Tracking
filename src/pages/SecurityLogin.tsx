@@ -158,7 +158,7 @@ const SecurityLogin = () => {
                             disabled={loading}
                             style={{ height: '3.25rem', marginTop: '1rem', width: '100%', background: 'var(--secondary)' }}
                         >
-                            {loading ? 'Authenticating...' : 'COMMENCE WATCH'}
+                            {loading ? 'Authenticating...' : 'Log in to Dashboard'}
                         </button>
                     </form>
 
