@@ -685,6 +685,7 @@ export const createSystemUser = async (data: {
     role: "superadmin" | "admin" | "security";
     email?: string; // Added for seeding
     password?: string; // Added for seeding
+    empId?: string; // NEW: Required for admins
 }) => {
     // Helper to attempt creation
     const attemptCreation = async (attemptName: string, attemptSuffix?: string): Promise<{ username: string, email: string, uid: string }> => {
@@ -707,6 +708,7 @@ export const createSystemUser = async (data: {
                 username: username,
                 email: email,
                 role: data.role,
+                empId: data.empId || null, // Store Employee ID
                 isActive: true,
                 lastPasswordChange: null,
                 createdAt: serverTimestamp(),
@@ -867,6 +869,7 @@ export const updateSystemUser = async (uid: string, data: {
     isActive?: boolean;
     name?: string;
     email?: string;
+    empId?: string;
 }) => {
     const userRef = doc(db, "users", uid);
     await updateDoc(userRef, {

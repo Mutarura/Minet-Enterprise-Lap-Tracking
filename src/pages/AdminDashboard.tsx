@@ -88,7 +88,7 @@ const AdminDashboard = () => {
     const [assignSearch, setAssignSearch] = useState('');
     const [showEmpFormModal, setShowEmpFormModal] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
-    const [userForm, setUserForm] = useState({ name: '', role: 'admin' as any, email: '' });
+    const [userForm, setUserForm] = useState({ name: '', role: 'admin' as any, email: '', empId: '' });
     const [editingUser, setEditingUser] = useState<any>(null);
     const [detailsHighlight, setDetailsHighlight] = useState(false);
     const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
@@ -866,7 +866,7 @@ const AdminDashboard = () => {
                                 </div>
                                 <button onClick={() => {
                                     setEditingUser(null);
-                                    setUserForm({ name: '', role: 'admin', email: '' });
+                                    setUserForm({ name: '', role: 'admin', email: '', empId: '' });
                                     setShowUserModal(true);
                                 }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                     <Plus size={20} /> Create User
@@ -899,7 +899,7 @@ const AdminDashboard = () => {
                                             <button
                                                 onClick={() => {
                                                     setEditingUser(user);
-                                                    setUserForm({ name: user.name, role: user.role, email: user.email || '' });
+                                                    setUserForm({ name: user.name, role: user.role, email: user.email || '', empId: user.empId || '' });
                                                     setShowUserModal(true);
                                                 }}
                                                 style={{ background: 'white', border: '1px solid #e2e8f0', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer' }}
@@ -1155,14 +1155,33 @@ const AdminDashboard = () => {
                             await updateSystemUser(editingUser.id, {
                                 name: userForm.name,
                                 role: userForm.role,
-                                email: userForm.email || undefined
+                                email: userForm.email || undefined,
+                                empId: userForm.role === 'admin' ? userForm.empId : undefined
                             });
                             alert("User updated successfully");
                         } else {
+                            // Verification Logic for Admins
+                            if (userForm.role === 'admin') {
+                                if (!userForm.empId) throw new Error("Employee ID is required for Admin accounts.");
+                                
+                                const { getEmployeeByEmpId } = await import('../services/firebase');
+                                const employee = await getEmployeeByEmpId(userForm.empId);
+
+                                if (!employee) {
+                                    throw new Error(`No employee found with ID ${userForm.empId}. Please add the employee first.`);
+                                }
+
+                                const empName = (employee as any).name;
+                                if (empName.toLowerCase().trim() !== userForm.name.toLowerCase().trim()) {
+                                    throw new Error(`Name mismatch! Employee ID ${userForm.empId} belongs to "${empName}", but you entered "${userForm.name}". Names must match.`);
+                                }
+                            }
+
                             const result = await createSystemUser({
                                 name: userForm.name,
                                 role: userForm.role,
-                                email: userForm.email || undefined
+                                email: userForm.email || undefined,
+                                empId: userForm.role === 'admin' ? userForm.empId : undefined
                             });
                             setNewAccountInfo(result);
                             setShowSuccessModal(true);
@@ -1196,9 +1215,24 @@ const AdminDashboard = () => {
                         <select value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value as any })} style={inputStyle}>
                             <option value="admin">Admin (Internal Ops)</option>
                             <option value="security">Security (Gate Ops)</option>
-                            <option value="superadmin">Super Admin (Full Access)</option>
                         </select>
                     </div>
+
+                    {userForm.role === 'admin' && (
+                        <div>
+                            <label style={labelStyle}>Employee ID (Required for Admins)</label>
+                            <input
+                                value={userForm.empId || ''}
+                                onChange={e => setUserForm({ ...userForm, empId: e.target.value })}
+                                style={inputStyle}
+                                placeholder="e.g. EMP1001"
+                                required={userForm.role === 'admin'}
+                            />
+                            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                                Admins must be existing employees. ID and Name will be verified.
+                            </p>
+                        </div>
+                    )}
 
                     <div style={{ marginTop: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
                         <h5 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Users size={14} /> Permissions</h5>
