@@ -223,12 +223,31 @@ select:focus {
     border-radius: var(--radius-sm) !important;
   }
 
+  .admin-dashboard .admin-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+
+  .admin-dashboard .admin-actions .glass-card {
+    margin: 0 !important;
+  }
+
+  .admin-dashboard .admin-actions .btn-primary,
+  .admin-dashboard .admin-actions button {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 40px !important;
+  }
+
   .admin-dashboard .user-grid {
     gap: 1rem !important;
   }
 
   .admin-dashboard .user-grid .glass-card {
     padding: 1rem !important;
+    border-radius: var(--radius-sm) !important;
+    box-shadow: var(--shadow-md) !important;
   }
 
   .admin-dashboard .user-grid h4 {
@@ -246,6 +265,10 @@ select:focus {
 
   .admin-dashboard .device-card {
     padding: 1rem !important;
+  }
+
+  .admin-dashboard .user-grid .glass-card button {
+    padding: 0.4rem !important;
   }
 
   /* Employee details panel */

@@ -569,7 +569,7 @@ const AdminDashboard = () => {
                     <div className="employee-details-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 450px', gap: '2rem' }}>
                         {/* List Section */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem' }}>
+                            <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
                                 <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                     <Search size={20} color="#94a3b8" />
                                     <input
@@ -853,7 +853,7 @@ const AdminDashboard = () => {
                 ) : activeTab === 'users' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                            <div className="admin-actions" style={{ display: 'flex', gap: '1rem', flex: 1 }}>
                                 <div className="glass-card" style={{ flex: 1, maxWidth: '500px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                     <Search size={20} color="#94a3b8" />
                                     <input
@@ -1013,7 +1013,7 @@ const AdminDashboard = () => {
                 ) : (
                     /* Device Tabs Content */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
+                        <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
                             <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                 <Search size={20} color="#94a3b8" />
                                 <input
