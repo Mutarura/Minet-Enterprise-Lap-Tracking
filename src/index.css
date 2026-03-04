@@ -210,6 +210,44 @@ select:focus {
     grid-template-columns: 1fr !important;
   }
 
+  /* Admin-only compact sizing */
+  .admin-dashboard .tabs-container button {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8rem !important;
+    border-radius: var(--radius-sm) !important;
+  }
+
+  .admin-dashboard .btn-primary {
+    padding: 0.6rem 1rem !important;
+    font-size: 0.8rem !important;
+    border-radius: var(--radius-sm) !important;
+  }
+
+  .admin-dashboard .user-grid {
+    gap: 1rem !important;
+  }
+
+  .admin-dashboard .user-grid .glass-card {
+    padding: 1rem !important;
+  }
+
+  .admin-dashboard .user-grid h4 {
+    font-size: 1rem !important;
+  }
+
+  .admin-dashboard .user-grid p {
+    font-size: 0.75rem !important;
+  }
+
+  .admin-dashboard .user-grid .glass-card > div > div:first-child {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .admin-dashboard .device-card {
+    padding: 1rem !important;
+  }
+
   /* Employee details panel */
   .employee-details-grid {
     grid-template-columns: 1fr !important;

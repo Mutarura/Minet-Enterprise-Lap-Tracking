@@ -467,7 +467,7 @@ const AdminDashboard = () => {
     }
 
     return (
-        <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+        <div className="admin-dashboard" style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
             <header style={{
                 background: 'white',
