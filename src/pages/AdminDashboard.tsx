@@ -42,19 +42,20 @@ import {
     UserCheck,
     UserX,
     Key,
-    RefreshCw
+    RefreshCw,
+    History
 } from 'lucide-react';
 import EmployeeCard from '../components/EmployeeCard';
 import DeviceCard from '../components/DeviceCard';
 import Modal from '../components/Modal';
 // @ts-ignore
 import { generateQRCode } from '../utils/qr';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
 import { CheckCircle2 } from 'lucide-react';
 
 const AdminDashboard = () => {
-    const [activeTab, setActiveTab] = useState<'employees' | 'company' | 'byod' | 'alerts' | 'users'>('employees');
+    const [activeTab, setActiveTab] = useState<'employees' | 'company' | 'byod' | 'alerts' | 'users' | 'audit_logs'>('employees');
     const [userRole, setUserRole] = useState<string | null>(null);
     const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
     const [systemUsers, setSystemUsers] = useState<any[]>([]);
@@ -63,6 +64,7 @@ const AdminDashboard = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, email: string } | null>(null);
 
@@ -234,6 +236,12 @@ const AdminDashboard = () => {
                 const activeAlerts = await getSystemAlerts(devs);
                 setAlerts(activeAlerts);
             }
+
+            if (activeTab === 'audit_logs') {
+                const q = query(collection(db, "auditLogs"), orderBy("timestamp", "desc"), limit(100));
+                const snap = await getDocs(q);
+                setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            }
         } catch (err) {
             console.error("❌ Data load error:", err);
         } finally {
@@ -244,6 +252,9 @@ const AdminDashboard = () => {
     useEffect(() => {
         if (activeTab === 'alerts' && alerts.length === 0) {
             loadData(true);
+        }
+        if (activeTab === 'audit_logs') {
+            loadData();
         }
     }, [activeTab]);
 
@@ -559,9 +570,14 @@ const AdminDashboard = () => {
                         )}
                     </button>
                     {userRole === 'superadmin' && (
-                        <button onClick={() => handleTabSwitch('users')} style={{ ...(activeTab === 'users' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
-                            <Users size={16} /> User Management
-                        </button>
+                        <>
+                            <button onClick={() => handleTabSwitch('users')} style={{ ...(activeTab === 'users' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                                <Users size={16} /> User Management
+                            </button>
+                            <button onClick={() => handleTabSwitch('audit_logs')} style={{ ...(activeTab === 'audit_logs' ? activeTabBtn : inactiveTabBtn), whiteSpace: 'nowrap' }}>
+                                <History size={16} /> Audit Logs
+                            </button>
+                        </>
                     )}
                 </div>
 
@@ -570,7 +586,7 @@ const AdminDashboard = () => {
                         {/* List Section */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
-                                <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                                <div className="glass-card search-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                     <Search size={20} color="#94a3b8" />
                                     <input
                                         type="text"
@@ -580,7 +596,7 @@ const AdminDashboard = () => {
                                         style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
                                     />
                                 </div>
-                                <button onClick={() => loadData(true)} className="glass-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                                <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
                                     <RefreshCw size={20} /> Refresh
                                 </button>
                                 <button onClick={() => {
@@ -854,7 +870,7 @@ const AdminDashboard = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div className="admin-actions" style={{ display: 'flex', gap: '1rem', flex: 1 }}>
-                                <div className="glass-card" style={{ flex: 1, maxWidth: '500px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                                <div className="glass-card search-card" style={{ flex: 1, maxWidth: '500px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                     <Search size={20} color="#94a3b8" />
                                     <input
                                         type="text"
@@ -895,7 +911,7 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                        <div className="user-card-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                             <button
                                                 onClick={() => {
                                                     setEditingUser(user);
@@ -1010,11 +1026,77 @@ const AdminDashboard = () => {
                             </div>
                         )}
                     </div>
+                ) : activeTab === 'audit_logs' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--secondary)' }}>System Audit Logs</h2>
+                            <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                                <RefreshCw size={20} /> Refresh
+                            </button>
+                        </div>
+
+                        <div className="glass-card" style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Time</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Actor</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Action</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Category</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Target</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {auditLogs.map((log) => (
+                                        <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                            <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                                                {log.timestamp?.toDate().toLocaleString() || 'N/A'}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                <div style={{ fontWeight: '600' }}>{log.actor?.name || 'Unknown'}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.actor?.email}</div>
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                <span style={{
+                                                    background: log.status === 'FAILURE' ? '#fee2e2' : '#f1f5f9',
+                                                    color: log.status === 'FAILURE' ? 'var(--danger)' : 'var(--secondary)',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: '700',
+                                                    fontSize: '0.75rem'
+                                                }}>
+                                                    {log.action?.type || 'UNKNOWN'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '1rem', fontSize: '0.8rem', color: '#64748b' }}>
+                                                {log.action?.category}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>
+                                                <div style={{ fontSize: '0.85rem' }}>{log.target?.type}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.target?.id}</div>
+                                            </td>
+                                            <td style={{ padding: '1rem', maxWidth: '300px' }}>
+                                                {log.description}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {auditLogs.length === 0 && (
+                                        <tr>
+                                            <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                                                No audit logs found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 ) : (
                     /* Device Tabs Content */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
-                            <div className="glass-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                            <div className="glass-card search-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                 <Search size={20} color="#94a3b8" />
                                 <input
                                     type="text"
@@ -1024,7 +1106,7 @@ const AdminDashboard = () => {
                                     style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
                                 />
                             </div>
-                            <button onClick={() => loadData(true)} className="glass-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                            <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
                                 <RefreshCw size={20} /> Refresh
                             </button>
                             <button onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' }); setModalOpen(true); }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

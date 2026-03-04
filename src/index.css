@@ -218,9 +218,10 @@ select:focus {
   }
 
   .admin-dashboard .btn-primary {
-    padding: 0.6rem 1rem !important;
+    padding: 0.5rem 0.75rem !important;
     font-size: 0.8rem !important;
     border-radius: var(--radius-sm) !important;
+    min-height: 44px !important;
   }
 
   .admin-dashboard .admin-actions {
@@ -238,6 +239,21 @@ select:focus {
     width: 100% !important;
     justify-content: center !important;
     min-height: 40px !important;
+  }
+
+  .admin-dashboard .search-card {
+    padding: 0 0.75rem !important;
+    height: 44px !important;
+  }
+
+  .admin-dashboard .search-card input {
+    padding: 0.4rem !important;
+    font-size: 0.9rem !important;
+  }
+
+  .admin-dashboard .compact-card {
+    padding: 0.5rem !important;
+    min-height: 44px !important;
   }
 
   .admin-dashboard .user-grid {
@@ -269,6 +285,16 @@ select:focus {
 
   .admin-dashboard .user-grid .glass-card button {
     padding: 0.4rem !important;
+  }
+
+  .admin-dashboard .user-card-actions {
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+  }
+
+  .admin-dashboard .user-card-actions svg {
+    width: 16px !important;
+    height: 16px !important;
   }
 
   /* Employee details panel */
