@@ -614,6 +614,18 @@ export const logSystemEvent = async (
             };
         }
 
+        // Use a 3rd party service or simple fetch to get IP if possible
+        // Note: Client-side IP fetch is often blocked by ad-blockers or requires an external API key.
+        // For this implementation, we will try a simple public API but fallback gracefully.
+        let ipAddress = 'N/A';
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            ipAddress = data.ip;
+        } catch (e) {
+            // IP fetch failed (offline or blocked), keep N/A
+        }
+
         const logEntry = {
             logId: doc(collections.auditLogs).id, // Auto-generate ID reference if needed
             timestamp: serverTimestamp(),
@@ -621,7 +633,7 @@ export const logSystemEvent = async (
             action,
             target,
             system: {
-                ipAddress: 'N/A', // Client-side JS cannot reliably get IP without external service
+                ipAddress: ipAddress, 
                 userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node/Server',
                 platform: typeof navigator !== 'undefined' ? navigator.platform : 'Server'
             },

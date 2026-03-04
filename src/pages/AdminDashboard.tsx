@@ -1028,11 +1028,24 @@ const AdminDashboard = () => {
                     </div>
                 ) : activeTab === 'audit_logs' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--secondary)' }}>System Audit Logs</h2>
-                            <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
-                                <RefreshCw size={20} /> Refresh
-                            </button>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--secondary)', margin: 0 }}>System Audit Logs</h2>
+                            
+                            <div style={{ display: 'flex', gap: '1rem', flex: 1, justifyContent: 'flex-end' }}>
+                                <div className="glass-card compact-card" style={{ display: 'flex', alignItems: 'center', padding: '0 1rem', flex: 1, maxWidth: '400px' }}>
+                                    <Search size={18} color="#94a3b8" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search logs (Actor, Action, Target)..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        style={{ border: 'none', padding: '0.75rem', width: '100%', outline: 'none', background: 'transparent', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+                                    <RefreshCw size={20} /> Refresh
+                                </button>
+                            </div>
                         </div>
 
                         <div className="glass-card" style={{ overflowX: 'auto' }}>
@@ -1040,50 +1053,69 @@ const AdminDashboard = () => {
                                 <thead>
                                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
                                         <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Time</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Actor</th>
+                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Actor (IP)</th>
                                         <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Action</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Category</th>
                                         <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Target</th>
                                         <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Description</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {auditLogs.map((log) => (
+                                    {auditLogs.filter(log => 
+                                        searchTerm === '' || 
+                                        log.actor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        log.actor?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        log.action?.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        log.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        log.target?.id?.toLowerCase().includes(searchTerm.toLowerCase())
+                                    ).map((log) => (
                                         <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
-                                                {log.timestamp?.toDate().toLocaleString() || 'N/A'}
+                                            <td style={{ padding: '1rem', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                                                <div style={{ fontWeight: '600' }}>{log.timestamp?.toDate().toLocaleDateString()}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.timestamp?.toDate().toLocaleTimeString()}</div>
                                             </td>
-                                            <td style={{ padding: '1rem' }}>
+                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
                                                 <div style={{ fontWeight: '600' }}>{log.actor?.name || 'Unknown'}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.actor?.email}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{log.actor?.email}</div>
+                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px', fontFamily: 'monospace' }}>
+                                                    IP: {log.system?.ipAddress || 'N/A'}
+                                                </div>
                                             </td>
-                                            <td style={{ padding: '1rem' }}>
-                                                <span style={{
-                                                    background: log.status === 'FAILURE' ? '#fee2e2' : '#f1f5f9',
-                                                    color: log.status === 'FAILURE' ? 'var(--danger)' : 'var(--secondary)',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '4px',
-                                                    fontWeight: '700',
-                                                    fontSize: '0.75rem'
-                                                }}>
-                                                    {log.action?.type || 'UNKNOWN'}
-                                                </span>
+                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <span style={{
+                                                        background: log.status === 'FAILURE' ? '#fee2e2' : '#f1f5f9',
+                                                        color: log.status === 'FAILURE' ? 'var(--danger)' : 'var(--secondary)',
+                                                        padding: '2px 8px',
+                                                        borderRadius: '4px',
+                                                        fontWeight: '700',
+                                                        fontSize: '0.75rem',
+                                                        width: 'fit-content'
+                                                    }}>
+                                                        {log.action?.type || 'UNKNOWN'}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.action?.category}</span>
+                                                </div>
                                             </td>
-                                            <td style={{ padding: '1rem', fontSize: '0.8rem', color: '#64748b' }}>
-                                                {log.action?.category}
+                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                                <div style={{ fontSize: '0.85rem', fontWeight: '600' }}>{log.target?.type}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>ID: {log.target?.id}</div>
+                                                {/* Metadata Rendering: Safe display of target info */}
+                                                {log.target?.metadata && (
+                                                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                                                        {log.target.metadata.name && <span>Name: {log.target.metadata.name}</span>}
+                                                        {log.target.metadata.email && <span> | {log.target.metadata.email}</span>}
+                                                        {log.target.metadata.username && <span> | @{log.target.metadata.username}</span>}
+                                                    </div>
+                                                )}
                                             </td>
-                                            <td style={{ padding: '1rem' }}>
-                                                <div style={{ fontSize: '0.85rem' }}>{log.target?.type}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{log.target?.id}</div>
-                                            </td>
-                                            <td style={{ padding: '1rem', maxWidth: '300px' }}>
+                                            <td style={{ padding: '1rem', maxWidth: '300px', verticalAlign: 'top' }}>
                                                 {log.description}
                                             </td>
                                         </tr>
                                     ))}
                                     {auditLogs.length === 0 && (
                                         <tr>
-                                            <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                                            <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
                                                 No audit logs found.
                                             </td>
                                         </tr>
