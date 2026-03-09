@@ -56,6 +56,7 @@ import {
     ShieldCheck
 } from 'lucide-react';
 import { getSystemAlerts, type Alert } from '../utils/alerts';
+import { addPendingScan, getAllPendingScans, getPendingCount, removePendingScan } from '../utils/offlineQueue';
 
 const SecurityDashboard = () => {
     const [activeTab, setActiveTab] = useState<'scanner' | 'logs' | 'visitors' | 'alerts'>('scanner');
@@ -107,6 +108,8 @@ const SecurityDashboard = () => {
     const [vendorCheckInForm, setVendorCheckInForm] = useState({ purpose: '', employeeName: '', employeePhone: '' });
 
     const [searchVisitor, setSearchVisitor] = useState('');
+    const [pendingCount, setPendingCount] = useState(0);
+    const [lastActionQueued, setLastActionQueued] = useState(false);
     const resetMobileState = () => {
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
             setScanState('idle');
@@ -153,10 +156,42 @@ const SecurityDashboard = () => {
         loadAlerts();
         checkProfile();
 
+        const initOffline = async () => {
+            const c = await getPendingCount();
+            setPendingCount(c);
+        };
+        initOffline();
+
+        const syncPending = async () => {
+            if (!navigator.onLine) return;
+            const items = await getAllPendingScans();
+            for (const item of items) {
+                try {
+                    await addLog({
+                        empId: item.empId,
+                        employeeName: item.employeeName,
+                        serialNumber: item.serialNumber,
+                        action: item.action
+                    });
+                    await removePendingScan(item.id);
+                } catch {
+                    break;
+                }
+            }
+            const c = await getPendingCount();
+            setPendingCount(c);
+        };
+
+        const onOnline = () => { void syncPending(); };
+        window.addEventListener('online', onOnline);
+        const interval = setInterval(() => { void syncPending(); }, 10000);
+
         return () => {
             unsubscribeLogs();
             unsubscribeVisitorLogs();
             unsubscribeVendorLogs();
+            window.removeEventListener('online', onOnline);
+            clearInterval(interval);
         };
     }, []);
 
@@ -215,19 +250,26 @@ const SecurityDashboard = () => {
         try {
             const parsed = JSON.parse(data);
 
-            // SECURITY SYNC: Fetch latest employee and device status
-            const [latestEmployee, deviceSnap] = await Promise.all([
-                getEmployeeByEmpId(parsed.empId),
-                getDoc(doc(db, "devices", parsed.serialNumber))
-            ]);
-
-            const deviceData = deviceSnap.exists() ? deviceSnap.data() : {};
+            let employeePhotoURL = parsed.employeePhotoURL || '';
+            let currentStatus = 'UNKNOWN';
+            let lastActionAt: any = null;
+            try {
+                const [latestEmployee, deviceSnap] = await Promise.all([
+                    getEmployeeByEmpId(parsed.empId),
+                    getDoc(doc(db, "devices", parsed.serialNumber))
+                ]);
+                const deviceData = deviceSnap.exists() ? deviceSnap.data() : {};
+                employeePhotoURL = (latestEmployee as any)?.photoURL || employeePhotoURL || '';
+                currentStatus = deviceData.lastAction || 'UNKNOWN';
+                lastActionAt = deviceData.lastActionAt || null;
+            } catch {
+            }
 
             setScannedMetadata({
                 ...parsed,
-                employeePhotoURL: (latestEmployee as any)?.photoURL || parsed.employeePhotoURL || '',
-                currentStatus: deviceData.lastAction || 'UNKNOWN',
-                lastActionAt: deviceData.lastActionAt
+                employeePhotoURL,
+                currentStatus,
+                lastActionAt
             });
             setScanState('reviewing');
         } catch (e) {
@@ -246,20 +288,50 @@ const SecurityDashboard = () => {
 
         setActionLoading(true);
         try {
-            await addLog({
-                empId: scannedMetadata.empId,
-                employeeName: scannedMetadata.employeeName,
-                serialNumber: scannedMetadata.serialNumber,
-                action: action
-            });
-            setScanState('success');
+            if (!navigator.onLine) {
+                await addPendingScan({
+                    empId: scannedMetadata.empId,
+                    employeeName: scannedMetadata.employeeName,
+                    serialNumber: scannedMetadata.serialNumber,
+                    action
+                });
+                setLastActionQueued(true);
+                setPendingCount(prev => prev + 1);
+                setScanState('success');
+            } else {
+                await addLog({
+                    empId: scannedMetadata.empId,
+                    employeeName: scannedMetadata.employeeName,
+                    serialNumber: scannedMetadata.serialNumber,
+                    action
+                });
+                setLastActionQueued(false);
+                setScanState('success');
+            }
             setTimeout(() => {
                 setScanState('idle');
                 setScannedMetadata(null);
                 loadAlerts(); // Refresh alerts after action
             }, 2500);
-        } catch (err) {
-            alert("Action failed. Please try again.");
+        } catch (err: any) {
+            const isNetwork = String(err?.code || err?.message || '').toLowerCase().includes('network') || String(err?.message || '').toLowerCase().includes('unavailable');
+            if (isNetwork) {
+                await addPendingScan({
+                    empId: scannedMetadata.empId,
+                    employeeName: scannedMetadata.employeeName,
+                    serialNumber: scannedMetadata.serialNumber,
+                    action
+                });
+                setLastActionQueued(true);
+                setPendingCount(prev => prev + 1);
+                setScanState('success');
+                setTimeout(() => {
+                    setScanState('idle');
+                    setScannedMetadata(null);
+                }, 2500);
+            } else {
+                alert("Action failed. Please try again.");
+            }
         } finally {
             setActionLoading(false);
         }
@@ -399,6 +471,11 @@ const SecurityDashboard = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {pendingCount > 0 && (
+                        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', padding: '0.35rem 0.6rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 800 }}>
+                            Pending scans: {pendingCount}
+                        </div>
+                    )}
                     <button
                         onClick={() => setShowExportModal(true)}
                         style={{ background: 'white', border: '1px solid #cbd5e1', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', cursor: 'pointer', color: 'var(--secondary)' }}
@@ -933,6 +1010,9 @@ const SecurityDashboard = () => {
                     <div style={{ textAlign: 'center', padding: '5rem 0' }}>
                         <CheckCircle2 size={64} color="#10b981" style={{ margin: '0 auto 1.5rem' }} />
                         <h2 style={{ fontSize: '1.5rem', color: 'var(--secondary)' }}>Recorded Successfully!</h2>
+                        {lastActionQueued && (
+                            <p style={{ margin: '0.5rem 0 0 0', color: '#64748b' }}>Scan recorded. Will sync when connection returns.</p>
+                        )}
                     </div>
                 )}
             </main>
