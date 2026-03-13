@@ -5,10 +5,10 @@ import { Trash2, Edit3, Shield } from 'lucide-react';
 interface EmployeeCardProps {
     employee: {
         id: string;
-        empId: string;
+        emp_id: string;
         name: string;
-        departmentOrFloor: string;
-        photoURL?: string;
+        department: string;
+        photo_url?: string;
     };
     onEdit: (emp: any) => void;
     onDelete: (id: string) => void;
@@ -31,7 +31,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
         >
             <div style={{ position: 'relative' }}>
                 <img
-                    src={employee.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(employee.name)}`}
+                    src={employee.photo_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(employee.name)}`}
                     alt={employee.name}
                     style={{
                         width: '70px',
@@ -53,14 +53,14 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                     borderRadius: '4px',
                     fontWeight: '700'
                 }}>
-                    {employee.empId}
+                    {employee.emp_id}
                 </div>
             </div>
 
             <div style={{ flex: 1 }}>
                 <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', color: 'var(--secondary)' }}>{employee.name}</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Shield size={14} /> {employee.departmentOrFloor}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Shield size={14} /> {employee.department}</span>
                 </div>
             </div>
 

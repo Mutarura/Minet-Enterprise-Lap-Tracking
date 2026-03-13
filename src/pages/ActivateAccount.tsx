@@ -1,33 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../firebase';
-import { signInWithEmailAndPassword, updatePassword } from 'firebase/auth';
-import { verifyActivationIdentity, finalizePasswordSetup, logSystemEvent } from '../services/firebase';
+import { changePassword, logSystemEvent } from '../services/api';
 import { validatePasswordStrength } from '../utils/passwordUtils';
 import { ShieldCheck, Lock, User, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const ActivateAccount = () => {
     const [step, setStep] = useState(1);
     const [username, setUsername] = useState('');
+    const [tempPasswordInput, setTempPasswordInput] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [tempPasswordInput, setTempPasswordInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [userData, setUserData] = useState<any>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
-        // Auto-fill username if provided in URL
         const params = new URLSearchParams(window.location.search);
         const urlUsername = params.get('username');
-        if (urlUsername) {
-            setUsername(urlUsername);
-        }
-
-        // If the user is ALREADY logged in (likely from the login page redirect), 
-        // we check if they match the account being activated.
-        // We do NOT call signOut here anymore to support the Login -> Activate flow.
+        if (urlUsername) setUsername(urlUsername);
     }, []);
 
     const handleVerify = async (e: React.FormEvent) => {
@@ -35,19 +25,12 @@ const ActivateAccount = () => {
         setLoading(true);
         setError('');
         try {
-            const trimmedUsername = username.trim();
-            const trimmedTemp = tempPasswordInput.trim();
-
-            if (!trimmedUsername) throw new Error("Please enter your username");
-            if (!trimmedTemp) throw new Error("Please enter your temporary password");
-
-            // Stage 1 Verification
-            const data = await verifyActivationIdentity(trimmedUsername, trimmedTemp);
-            setUserData(data);
+            if (!username.trim()) throw new Error("Please enter your username");
+            if (!tempPasswordInput.trim()) throw new Error("Please enter your temporary password");
+            // Move to step 2 — actual password change happens in step 2
             setStep(2);
         } catch (err: any) {
-            console.error("Verification Error:", err);
-            setError(err.message || "Identity verification failed.");
+            setError(err.message || "Verification failed.");
         } finally {
             setLoading(false);
         }
@@ -59,7 +42,6 @@ const ActivateAccount = () => {
         const trimmedConfirm = confirmPassword.trim();
         const trimmedTemp = tempPasswordInput.trim();
 
-        // 1. Validations
         if (trimmedPassword !== trimmedConfirm) {
             setError("Passwords do not match");
             return;
@@ -79,50 +61,25 @@ const ActivateAccount = () => {
         setLoading(true);
         setError('');
         try {
-            console.log("Stage 2: Finalizing password for", userData.email);
+            await changePassword(trimmedTemp, trimmedPassword);
 
-            let userToUpdate = auth.currentUser;
-
-            // Ensure we have a valid auth session for this account using the temporary password
-            if (!userToUpdate || userToUpdate.email?.toLowerCase() !== userData.email.toLowerCase()) {
-                try {
-                    const userCred = await signInWithEmailAndPassword(auth, userData.email, trimmedTemp);
-                    userToUpdate = userCred.user;
-                } catch (authErr: any) {
-                    console.error("Stage 2: Auth Error", authErr);
-                    const friendly =
-                        authErr.code === 'auth/wrong-password' || authErr.code === 'auth/invalid-credential'
-                            ? "We could not authenticate using this temporary password. It may have already been used or expired. Please ask your Superadmin to renew your password from the dashboard."
-                            : "Could not authenticate session. Please try restarting the process or contact your Superadmin.";
-                    throw new Error(friendly);
-                }
-            }
-
-            await updatePassword(userToUpdate, trimmedPassword);
-            console.log("Stage 2: Auth password updated");
-
-            // 4. Update Firestore Profile
-            await finalizePasswordSetup(userData.uid);
-            console.log("Stage 2: Firestore records updated");
-
-            // 5. Audit Log (Specific Event)
             await logSystemEvent(
                 { type: 'PASSWORD_RESET_COMPLETED', category: 'AUTH' },
-                { id: userData.uid, type: 'USER', metadata: { username: userData.username } },
+                { id: 'self', type: 'USER', metadata: { username: username.trim() } },
                 'SUCCESS',
-                userData.type === 'INITIAL' ? 'Initial account password established' : 'Account password renewed'
+                'Account password established via activation flow'
             );
 
             setStep(3);
         } catch (err: any) {
-            console.error("Activation Final Step Error:", err);
+            console.error("Activation Error:", err);
             setError(err.message || "An unexpected error occurred during password setup.");
 
             await logSystemEvent(
                 { type: 'PASSWORD_SETUP_FAILED', category: 'AUTH' },
-                { id: userData?.uid || 'N/A', type: 'USER' },
+                { id: 'self', type: 'USER' },
                 'FAILURE',
-                `Final setup failed: ${err.message}`
+                `Password setup failed: ${err.message}`
             );
         } finally {
             setLoading(false);
@@ -138,7 +95,7 @@ const ActivateAccount = () => {
                     </div>
                     <h1 style={{ fontSize: '1.75rem', color: 'var(--secondary)', marginBottom: '0.5rem' }}>Account Activation</h1>
                     <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
-                        {step === 1 ? "Enter your username to set up your account" : step === 2 ? `Setting up: ${userData?.email}` : "Success!"}
+                        {step === 1 ? "Enter your credentials to activate your account" : step === 2 ? "Set your new password" : "Success!"}
                     </p>
                 </div>
 
@@ -156,7 +113,7 @@ const ActivateAccount = () => {
                                 <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}><User size={18} /></span>
                                 <input
                                     type="text"
-                                    placeholder="e.g. MutaruraR"
+                                    placeholder="Your username"
                                     style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid #cbd5e1', outline: 'none' }}
                                     value={username}
                                     onChange={e => setUsername(e.target.value)}
@@ -171,7 +128,7 @@ const ActivateAccount = () => {
                                 <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}><Lock size={18} /></span>
                                 <input
                                     type="text"
-                                    placeholder="Enter secret code from Admin"
+                                    placeholder="Enter temporary password from Admin"
                                     style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid #cbd5e1', outline: 'none' }}
                                     value={tempPasswordInput}
                                     onChange={e => setTempPasswordInput(e.target.value)}
@@ -181,21 +138,13 @@ const ActivateAccount = () => {
                         </div>
 
                         <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                            {loading ? "Verifying..." : "Verify Identity"}
+                            {loading ? "Verifying..." : "Continue"}
                         </button>
                     </form>
                 )}
 
                 {step === 2 && (
                     <form onSubmit={handleActivate} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div style={{ padding: '1rem', background: '#ecfdf5', border: '1px solid #d1fae5', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: '#065f46', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                            <CheckCircle2 size={20} />
-                            <div>
-                                <strong>Identity Verified</strong>
-                                <p style={{ margin: 0, opacity: 0.8 }}>Logged in as: {userData?.email}</p>
-                            </div>
-                        </div>
-
                         <div style={{ padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #dbeafe', fontSize: '0.8rem', color: '#1e40af' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px', fontWeight: '800' }}>
                                 <AlertTriangle size={14} /> Password Rules:
@@ -259,7 +208,7 @@ const ActivateAccount = () => {
                     </button>
                 </div>
             </div>
-        </div >
+        </div>
     );
 };
 
