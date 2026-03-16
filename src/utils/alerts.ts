@@ -1,4 +1,3 @@
-import { getDevices } from '../services/api';
 
 export interface Alert {
     id: string;

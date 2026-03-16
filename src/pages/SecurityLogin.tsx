@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, db, logSystemEvent } from '../services/firebase';
+import { loginUser, logSystemEvent } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
@@ -18,35 +17,19 @@ const SecurityLogin = () => {
         setLoading(true);
 
         const cleanUsername = username.trim();
-        let email = '';
 
         try {
-            const { query, where, getDocs, collection } = await import('firebase/firestore');
-            const q = query(collection(db, "users"), where("username", "==", cleanUsername));
-            const snap = await getDocs(q);
-            if (snap.empty) {
-                throw new Error("USER_NOT_FOUND");
-            }
-            email = snap.docs[0].data().email;
-
-            const userCred = await signInWithEmailAndPassword(auth, email, password);
-
-            // Fetch latest user data for role and status (ensures profile exists)
-            const { getDoc, doc } = await import('firebase/firestore');
-            const userRef = doc(db, "users", userCred.user.uid);
-            await getDoc(userRef);
+            await loginUser(cleanUsername, password);
 
             await logSystemEvent(
                 { type: 'LOGIN', category: 'AUTH' },
-                { id: userCred.user.uid, type: 'USER', metadata: { email } },
+                { id: cleanUsername, type: 'USER', metadata: { username: cleanUsername } },
                 'SUCCESS',
                 'Security Portal Login'
             );
 
             navigate('/dashboard/security');
         } catch (err: any) {
-            console.error("Login Error:", err.code, err.message);
-
             await logSystemEvent(
                 { type: 'LOGIN', category: 'AUTH' },
                 { id: 'unknown', type: 'USER', metadata: { username: cleanUsername } },
@@ -54,7 +37,13 @@ const SecurityLogin = () => {
                 `Login failed: ${err.message}`
             );
 
-            setError('Invalid username or password.');
+            if (err.message === 'ACCOUNT_DISABLED') {
+                setError('This account has been deactivated. Please contact support.');
+            } else if (err.message === 'USER_NOT_FOUND') {
+                setError('Account not found. Please contact your administrator.');
+            } else {
+                setError('Invalid username or password.');
+            }
         } finally {
             setLoading(false);
         }
@@ -161,17 +150,6 @@ const SecurityLogin = () => {
                             {loading ? 'Authenticating...' : 'Log in to Dashboard'}
                         </button>
                     </form>
-
-                    <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-                        {/* Link removed as temp password is no longer exposed to users
-                        <button
-                            onClick={() => navigate('/activate')}
-                            style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}
-                        >
-                            Set up / Renew password
-                        </button>
-                        */}
-                    </div>
                 </div>
             </div>
             <p style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>

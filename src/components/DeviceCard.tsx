@@ -5,13 +5,13 @@ import { Laptop, QrCode, Trash2, Edit3 } from 'lucide-react';
 interface DeviceCardProps {
     device: {
         id: string;
-        serialNumber: string;
+        serial_number: string;
         type: "COMPANY" | "BYOD";
         make: string;
         model: string;
         color: string;
-        assignedTo?: string | null;
-        qrCodeURL?: string | null;
+        assigned_to?: string | null;
+        qr_code_url?: string | null;
     };
     onEdit: (dev: any) => void;
     onDelete: (id: string) => void;
@@ -19,7 +19,7 @@ interface DeviceCardProps {
 }
 
 const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGenerateQR }) => {
-    const isAssigned = !!device.assignedTo;
+    const isAssigned = !!device.assigned_to;
 
     return (
         <div className="glass-card device-card" style={{ padding: '1.25rem' }}>
@@ -49,7 +49,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
                         {device.type}
                     </span>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>S/N: {device.serialNumber}</p>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>S/N: {device.serial_number}</p>
                 <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{
                         width: '8px',
@@ -58,7 +58,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
                         background: isAssigned ? '#10b981' : '#cbd5e1'
                     }}></div>
                     <span style={{ fontSize: '0.75rem', color: isAssigned ? '#059669' : '#64748b', fontWeight: '600' }}>
-                        {isAssigned ? `Assigned to ${device.assignedTo}` : 'Unassigned'}
+                        {isAssigned ? `Assigned to ${device.assigned_to}` : 'Unassigned'}
                     </span>
                 </div>
             </div>
@@ -69,8 +69,8 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
                     title="Generate QR"
                     style={{
                         padding: '0.5rem',
-                        background: device.qrCodeURL ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
-                        color: device.qrCodeURL ? '#10b981' : '#475569',
+                        background: device.qr_code_url ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
+                        color: device.qr_code_url ? '#10b981' : '#475569',
                         border: 'none',
                         borderRadius: '0.5rem'
                     }}
