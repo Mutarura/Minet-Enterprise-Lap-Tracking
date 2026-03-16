@@ -205,8 +205,8 @@ const AdminDashboard = () => {
                 });
                 alert("Employee added successfully!");
             } else {
-                if (!selectedEmployee?.empId) throw new Error("No employee selected for update");
-                await updateEmployee(selectedEmployee.empId, {
+                if (!selectedEmployee?.emp_id) throw new Error("No employee selected for update");
+                  await updateEmployee(selectedEmployee.emp_id, {
                     name: empForm.name.trim(),
                     departmentOrFloor: empForm.departmentOrFloor.trim(),
                     photoFile: photoFile || undefined

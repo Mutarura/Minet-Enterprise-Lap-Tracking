@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { changePassword, logSystemEvent } from '../services/api';
 import { validatePasswordStrength } from '../utils/passwordUtils';
-import { ShieldCheck, Lock, User, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Lock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 
 const ActivateAccount = () => {
-    const [step, setStep] = useState(1);
-    const [username, setUsername] = useState('');
-    const [tempPasswordInput, setTempPasswordInput] = useState('');
+    const [step, setStep] = useState<'loading' | 'form' | 'success' | 'invalid'>('loading');
+    const [token, setToken] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -16,71 +14,50 @@ const ActivateAccount = () => {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const urlUsername = params.get('username');
-        if (urlUsername) setUsername(urlUsername);
+        const urlToken = params.get('token');
+        if (urlToken) {
+            setToken(urlToken);
+            setStep('form');
+        } else {
+            setStep('invalid');
+        }
     }, []);
 
-    const handleVerify = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
-        try {
-            if (!username.trim()) throw new Error("Please enter your username");
-            if (!tempPasswordInput.trim()) throw new Error("Please enter your temporary password");
-            // Move to step 2 — actual password change happens in step 2
-            setStep(2);
-        } catch (err: any) {
-            setError(err.message || "Verification failed.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleActivate = async (e: React.FormEvent) => {
+    const handleSetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         const trimmedPassword = newPassword.trim();
         const trimmedConfirm = confirmPassword.trim();
-        const trimmedTemp = tempPasswordInput.trim();
 
         if (trimmedPassword !== trimmedConfirm) {
-            setError("Passwords do not match");
+            setError("Passwords do not match.");
             return;
         }
 
         const strength = validatePasswordStrength(trimmedPassword);
         if (!strength.isValid) {
-            setError(strength.error || "Password is too weak");
-            return;
-        }
-
-        if (trimmedPassword === trimmedTemp) {
-            setError("New password cannot be the same as your temporary password");
+            setError(strength.error || "Password is too weak.");
             return;
         }
 
         setLoading(true);
         setError('');
+
         try {
-            await changePassword(trimmedTemp, trimmedPassword);
+            const res = await fetch('/api/users/set-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password: trimmedPassword })
+            });
 
-            await logSystemEvent(
-                { type: 'PASSWORD_RESET_COMPLETED', category: 'AUTH' },
-                { id: 'self', type: 'USER', metadata: { username: username.trim() } },
-                'SUCCESS',
-                'Account password established via activation flow'
-            );
+            const data = await res.json();
 
-            setStep(3);
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to set password.');
+            }
+
+            setStep('success');
         } catch (err: any) {
-            console.error("Activation Error:", err);
-            setError(err.message || "An unexpected error occurred during password setup.");
-
-            await logSystemEvent(
-                { type: 'PASSWORD_SETUP_FAILED', category: 'AUTH' },
-                { id: 'self', type: 'USER' },
-                'FAILURE',
-                `Password setup failed: ${err.message}`
-            );
+            setError(err.message || 'An unexpected error occurred.');
         } finally {
             setLoading(false);
         }
@@ -89,68 +66,60 @@ const ActivateAccount = () => {
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
             <div className="glass-card" style={{ maxWidth: '450px', width: '100%', padding: '2.5rem' }}>
+
+                {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                     <div style={{ display: 'inline-flex', padding: '1rem', background: 'rgba(226, 26, 34, 0.05)', borderRadius: '1rem', color: 'var(--primary)', marginBottom: '1rem' }}>
                         <ShieldCheck size={40} />
                     </div>
-                    <h1 style={{ fontSize: '1.75rem', color: 'var(--secondary)', marginBottom: '0.5rem' }}>Account Activation</h1>
+                    <h1 style={{ fontSize: '1.75rem', color: 'var(--secondary)', marginBottom: '0.5rem' }}>
+                        {step === 'loading' && 'Please wait...'}
+                        {step === 'form' && 'Set Your Password'}
+                        {step === 'success' && 'Password Set!'}
+                        {step === 'invalid' && 'Invalid Link'}
+                    </h1>
                     <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
-                        {step === 1 ? "Enter your credentials to activate your account" : step === 2 ? "Set your new password" : "Success!"}
+                        {step === 'form' && 'Choose a strong password to activate your account.'}
+                        {step === 'success' && 'Your account is now active. You can log in.'}
+                        {step === 'invalid' && 'This link is missing a token. Please use the link from your email.'}
                     </p>
                 </div>
 
-                {error && (
-                    <div style={{ background: '#fee2e2', color: 'var(--danger)', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.85rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-                        {error}
+                {/* Loading */}
+                {step === 'loading' && (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        Verifying your link...
                     </div>
                 )}
 
-                {step === 1 && (
-                    <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div style={{ position: 'relative' }}>
-                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#475569', marginBottom: '0.5rem' }}>Username</label>
-                            <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}><User size={18} /></span>
-                                <input
-                                    type="text"
-                                    placeholder="Your username"
-                                    style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid #cbd5e1', outline: 'none' }}
-                                    value={username}
-                                    onChange={e => setUsername(e.target.value)}
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#475569', marginBottom: '0.5rem' }}>Temporary Password</label>
-                            <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}><Lock size={18} /></span>
-                                <input
-                                    type="text"
-                                    placeholder="Enter temporary password from Admin"
-                                    style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid #cbd5e1', outline: 'none' }}
-                                    value={tempPasswordInput}
-                                    onChange={e => setTempPasswordInput(e.target.value)}
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                            {loading ? "Verifying..." : "Continue"}
+                {/* Invalid */}
+                {step === 'invalid' && (
+                    <div style={{ textAlign: 'center' }}>
+                        <XCircle size={48} color="var(--danger)" style={{ margin: '0 auto 1rem' }} />
+                        <p style={{ color: '#64748b', marginBottom: '1.5rem' }}>
+                            Please check your email and click the link provided, or contact your administrator to resend the invitation.
+                        </p>
+                        <button onClick={() => navigate('/')} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+                            Back to Login
                         </button>
-                    </form>
+                    </div>
                 )}
 
-                {step === 2 && (
-                    <form onSubmit={handleActivate} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Form */}
+                {step === 'form' && (
+                    <form onSubmit={handleSetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {error && (
+                            <div style={{ background: '#fee2e2', color: 'var(--danger)', padding: '0.75rem', borderRadius: '0.5rem', fontSize: '0.85rem', textAlign: 'center' }}>
+                                {error}
+                            </div>
+                        )}
+
                         <div style={{ padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #dbeafe', fontSize: '0.8rem', color: '#1e40af' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px', fontWeight: '800' }}>
-                                <AlertTriangle size={14} /> Password Rules:
+                                <AlertTriangle size={14} /> Password Requirements:
                             </div>
-                            • Min 8 characters<br />
-                            • Must contain uppercase & lowercase<br />
+                            • Minimum 8 characters<br />
+                            • Must contain uppercase & lowercase letters<br />
                             • Must contain at least one number
                         </div>
 
@@ -165,6 +134,7 @@ const ActivateAccount = () => {
                                     value={newPassword}
                                     onChange={e => setNewPassword(e.target.value)}
                                     required
+                                    autoFocus
                                 />
                             </div>
                         </div>
@@ -184,18 +154,19 @@ const ActivateAccount = () => {
                             </div>
                         </div>
 
-                        <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                            {loading ? "Saving..." : "Set Password & Activate"}
+                        <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', height: '3rem' }}>
+                            {loading ? 'Setting Password...' : 'Set Password & Activate'}
                         </button>
                     </form>
                 )}
 
-                {step === 3 && (
+                {/* Success */}
+                {step === 'success' && (
                     <div style={{ textAlign: 'center' }}>
-                        <div style={{ color: '#10b981', marginBottom: '1.5rem' }}>
-                            <CheckCircle2 size={64} style={{ margin: '0 auto' }} />
-                        </div>
-                        <p style={{ color: '#475569', fontWeight: '600', marginBottom: '2rem' }}>Your account is now active!</p>
+                        <CheckCircle2 size={64} color="#10b981" style={{ margin: '0 auto 1.5rem' }} />
+                        <p style={{ color: '#475569', fontWeight: '600', marginBottom: '2rem' }}>
+                            Your password has been set successfully. You can now log in with your username and new password.
+                        </p>
                         <button onClick={() => navigate('/')} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
                             Go to Login
                         </button>
