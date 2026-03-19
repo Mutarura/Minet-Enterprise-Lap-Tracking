@@ -271,7 +271,7 @@ const PrintLabel = () => {
 
             <div className="label-card">
                 <img
-                    src="/logo.png"
+                    src="/tracker/logo.png"
                     className="label-logo"
                     alt="Minet"
                     onLoad={() => handleImageLoad('logo')}

@@ -415,7 +415,7 @@ const SecurityDashboard = () => {
                                 );
                                 localStorage.removeItem('minet_token');
                                 localStorage.removeItem('minet_user');
-                                window.location.href = '/';
+                                window.location.href = '/tracker/';
                             }
                         }}
                         style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', cursor: 'pointer', color: 'var(--secondary)' }}

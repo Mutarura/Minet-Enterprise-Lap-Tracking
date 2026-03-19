@@ -82,7 +82,7 @@ const SecurityLogin = () => {
                 <div className="glass-card" style={{ padding: '2.5rem', width: '100%' }}>
                     <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                            <img src="/logo.png" style={{ width: '120px', height: 'auto' }} alt="Minet Logo" />
+                            <img src="/tracker/logo.png" style={{ width: '120px', height: 'auto' }} alt="Minet Logo" />
                         </div>
                         <h2 style={{ fontSize: '1.25rem', color: 'var(--secondary)', fontWeight: '700' }}>Security Portal</h2>
                     </div>

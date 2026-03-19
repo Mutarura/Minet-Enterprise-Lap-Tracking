@@ -58,7 +58,7 @@ const Login = () => {
             {/* Branded Header */}
             <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <img src="/logo.png" style={{ width: '120px', height: 'auto', marginBottom: '1rem' }} alt="Minet Logo" />
+                    <img src="/tracker/logo.png" style={{ width: '120px', height: 'auto', marginBottom: '1rem' }} alt="Minet Logo" />
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--secondary)', fontWeight: '600', letterSpacing: '1px', fontStyle: 'italic' }}>
                     Risk. Reinsurance. People

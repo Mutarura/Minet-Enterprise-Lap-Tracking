@@ -30,7 +30,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
       <div className="container" style={{ textAlign: 'center', marginTop: '4rem' }}>
         <h2>Account Disabled</h2>
         <p>Your account has been deactivated. Please contact the administrator.</p>
-        <button onClick={() => { localStorage.removeItem('minet_token'); localStorage.removeItem('minet_user'); window.location.href = '/'; }} className="btn-primary" style={{ marginTop: '1rem' }}>Logout</button>
+        <button onClick={() => { localStorage.removeItem('minet_token'); localStorage.removeItem('minet_user'); window.location.href = '/tracker/'; }} className="btn-primary" style={{ marginTop: '1rem' }}>Logout</button>
       </div>
     );
   }
@@ -54,7 +54,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
 
 function App() {
   return (
-    <Router>
+    <Router basename="/tracker">
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login/it" element={<ITLogin />} />

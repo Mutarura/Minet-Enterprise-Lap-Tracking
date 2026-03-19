@@ -66,7 +66,7 @@ const apiFetch = async (
 
   if (response.status === 401) {
     removeToken();
-    window.location.href = '/';
+    window.location.href = '/tracker/';
     throw new Error('Session expired. Please log in again.');
   }
 

@@ -361,7 +361,7 @@ const AdminDashboard = () => {
                 <div style={{ fontSize: '3rem' }}>🔒</div>
                 <h2 style={{ color: '#64748b', margin: 0 }}>Access Denied</h2>
                 <p style={{ color: '#94a3b8' }}>Unable to verify your permissions.</p>
-                <button onClick={() => { localStorage.removeItem('minet_token'); localStorage.removeItem('minet_user'); window.location.href = '/'; }} className="btn-primary">Return to Login</button>
+                <button onClick={() => { localStorage.removeItem('minet_token'); localStorage.removeItem('minet_user'); window.location.href = '/tracker/'; }} className="btn-primary">Return to Login</button>
             </div>
         );
     }
@@ -390,7 +390,7 @@ const AdminDashboard = () => {
                                 );
                                 localStorage.removeItem('minet_token');
                                 localStorage.removeItem('minet_user');
-                                window.location.href = '/';
+                                window.location.href = '/tracker/';
                             }
                         }}
                         style={{ background: 'rgba(226, 26, 34, 0.05)', border: '1px solid rgba(226, 26, 34, 0.2)', color: 'var(--primary)', fontWeight: '700', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
@@ -847,7 +847,7 @@ const AdminDashboard = () => {
                         <div id="printable-label">
                             <div className="label-header">
                                 <div className="label-logo-box">
-                                    <img src="/logo.png" className="label-logo" alt="Minet" />
+                                    <img src="/tracker/logo.png" className="label-logo" alt="Minet" />
                                 </div>
                                 <div className="label-tag">ASSET TAG</div>
                             </div>
