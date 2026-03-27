@@ -54,7 +54,7 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
 
 function App() {
   return (
-    <Router basename="/tracker">
+    <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login/it" element={<ITLogin />} />

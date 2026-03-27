@@ -30,12 +30,14 @@ const ITLogin = () => {
 
             navigate('/dashboard/it');
         } catch (err: any) {
-            await logSystemEvent(
-                { type: 'LOGIN', category: 'AUTH' },
-                { id: 'unknown', type: 'USER', metadata: { username: cleanUsername } },
-                'FAILURE',
-                `Login failed: ${err.message}`
-            );
+    try {
+        await logSystemEvent(
+            { type: 'LOGIN', category: 'AUTH' },
+            { id: 'unknown', type: 'USER', metadata: { username: cleanUsername } },
+            'FAILURE',
+            `Login failed: ${err.message}`
+        );
+    } catch (_) {}
 
             if (err.message === 'ACCOUNT_DISABLED') {
                 setError('This account has been deactivated. Please contact support.');

@@ -64,11 +64,15 @@ const apiFetch = async (
     headers
   });
 
-  if (response.status === 401) {
-    removeToken();
-    window.location.href = '/tracker/';
+ if (response.status === 401) {
+    // Only redirect if we had a token (real session expiry)
+    // Don't redirect during login attempts
+    if (getToken()) {
+        removeToken();
+        window.location.href = '/tracker/';
+    }
     throw new Error('Session expired. Please log in again.');
-  }
+}
 
   const data = await response.json();
 
