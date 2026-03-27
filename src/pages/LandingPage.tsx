@@ -19,7 +19,7 @@ const LandingPage = () => {
             {/* Branded Header */}
             <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <img src="/logo.png" alt="Minet Logo" style={{ width: '140px', height: 'auto', marginBottom: '1rem' }} />
+                    <img src="/tracker/logo.png" alt="Minet Logo" style={{ width: '140px', height: 'auto', marginBottom: '1rem' }} />
                 </div>
                 <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--secondary)', marginTop: '0.5rem', fontStyle: 'italic' }}>
                     Risk. Reinsurance. People

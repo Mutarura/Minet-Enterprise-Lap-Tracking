@@ -1,38 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
-    collections,
     addLog,
-    auth,
     getDevices,
     getEmployeeByEmpId,
-    db,
     addVisitor,
     checkOutVisitor,
     addVendor,
     checkInVendor,
     deleteVendor,
     checkOutVendorVisit,
-    // New Subscriptions
     subscribeToActiveVisitors,
     subscribeToVendors,
     subscribeToActiveVendorVisits,
     subscribeToTodayVisitors,
-
     subscribeToTodayVendorVisits,
-    logSystemEvent
-} from '../services/firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-// import { useNavigate } from 'react-router-dom';
-import {
-    query,
-    where,
-    onSnapshot,
-    Timestamp,
-    orderBy,
-    limit,
-    getDocs
-} from 'firebase/firestore';
+    logSystemEvent,
+    getToken,
+    getUser
+} from '../services/api';
 import QRScanner from '../components/QRScanner';
 import Modal from '../components/Modal';
 import {
@@ -93,7 +78,6 @@ const SecurityDashboard = () => {
         reason: '',
         identifier: '',
         destination: '',
-        // Standard Device Details
         deviceType: '',
         deviceMakeModel: '',
         deviceSerial: '',
@@ -110,6 +94,7 @@ const SecurityDashboard = () => {
     const [searchVisitor, setSearchVisitor] = useState('');
     const [pendingCount, setPendingCount] = useState(0);
     const [lastActionQueued, setLastActionQueued] = useState(false);
+
     const resetMobileState = () => {
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
             setScanState('idle');
@@ -125,23 +110,23 @@ const SecurityDashboard = () => {
         resetMobileState();
     };
 
-    // const navigate = useNavigate();
-
     useEffect(() => {
-        // Consolidated Log Subscription
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Logs (Devices)
-        const qLogs = query(
-            collections.logs,
-            where("timestamp", ">=", Timestamp.fromDate(today)),
-            orderBy("timestamp", "desc"),
-            limit(50)
-        );
-        const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
-            setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        // Logs (Devices) - poll every 15 seconds
+        const fetchTodayLogs = async () => {
+            try {
+                const res = await fetch('/api/logs/today', {
+                    headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                const data = await res.json();
+                setLogs(Array.isArray(data) ? data : []);
+            } catch (e) { console.error('Log fetch error:', e); }
+        };
+        fetchTodayLogs();
+        const logsInterval = setInterval(fetchTodayLogs, 15000);
+        const unsubscribeLogs = () => clearInterval(logsInterval);
 
         // Visitor Logs (Today)
         const unsubscribeVisitorLogs = subscribeToTodayVisitors((data) => {
@@ -195,12 +180,10 @@ const SecurityDashboard = () => {
         };
     }, []);
 
-    const checkProfile = async () => {
-        if (auth.currentUser) {
-            const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-            if (userDoc.exists()) {
-                setCurrentUserProfile(userDoc.data());
-            }
+    const checkProfile = () => {
+        const user = getUser();
+        if (user) {
+            setCurrentUserProfile(user);
         }
     };
 
@@ -231,8 +214,6 @@ const SecurityDashboard = () => {
         };
     }, [activeTab, visitorTab]);
 
-    // Removed loadVisitorData as subscriptions handle updates automatically
-
     const loadAlerts = async () => {
         setAlertsLoading(true);
         try {
@@ -254,14 +235,15 @@ const SecurityDashboard = () => {
             let currentStatus = 'UNKNOWN';
             let lastActionAt: any = null;
             try {
-                const [latestEmployee, deviceSnap] = await Promise.all([
+                const [latestEmployee, deviceData] = await Promise.all([
                     getEmployeeByEmpId(parsed.empId),
-                    getDoc(doc(db, "devices", parsed.serialNumber))
+                    (await fetch(`/api/devices/${parsed.serialNumber}`, {
+                        headers: { 'Authorization': `Bearer ${getToken()}` }
+                    })).json()
                 ]);
-                const deviceData = deviceSnap.exists() ? deviceSnap.data() : {};
-                employeePhotoURL = (latestEmployee as any)?.photoURL || employeePhotoURL || '';
-                currentStatus = deviceData.lastAction || 'UNKNOWN';
-                lastActionAt = deviceData.lastActionAt || null;
+                employeePhotoURL = (latestEmployee as any)?.photo_url || employeePhotoURL || '';
+                currentStatus = deviceData.last_action || 'UNKNOWN';
+                lastActionAt = deviceData.last_action_at || null;
             } catch {
             }
 
@@ -279,7 +261,6 @@ const SecurityDashboard = () => {
     };
 
     const handleAction = async (action: 'CHECK_IN' | 'CHECK_OUT') => {
-        // DOUBLE ACTION PREVENTION RULE
         if (action === scannedMetadata.currentStatus) {
             const statusLabel = action === 'CHECK_IN' ? 'IN' : 'OUT';
             alert(`SECURITY ALERT: This device is already recorded as CHECKED ${statusLabel}. You cannot perform a double ${action.replace('_', ' ')}.`);
@@ -311,7 +292,7 @@ const SecurityDashboard = () => {
             setTimeout(() => {
                 setScanState('idle');
                 setScannedMetadata(null);
-                loadAlerts(); // Refresh alerts after action
+                loadAlerts();
             }, 2500);
         } catch (err: any) {
             const isNetwork = String(err?.code || err?.message || '').toLowerCase().includes('network') || String(err?.message || '').toLowerCase().includes('unavailable');
@@ -342,92 +323,31 @@ const SecurityDashboard = () => {
             alert("Please select both start and end dates.");
             return;
         }
-
         try {
-            const start = new Date(exportDates.start);
-            const end = new Date(exportDates.end);
-            end.setHours(23, 59, 59);
+            const token = getToken();
+            const res = await fetch(`/api/logs/export?start=${exportDates.start}&end=${exportDates.end}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const allData = await res.json();
 
-            // 1. Fetch Device Logs
-            const qLogs = query(
-                collections.logs,
-                where("timestamp", ">=", Timestamp.fromDate(start)),
-                where("timestamp", "<=", Timestamp.fromDate(end)),
-                orderBy("timestamp", "desc")
-            );
-            const snapsLogs = await getDocs(qLogs);
-            const logsData = snapsLogs.docs.map(d => ({ ...d.data(), type: 'DEVICE', sortTime: d.data().timestamp.toDate().getTime() }));
-
-            // 2. Fetch Visitor Logs (using checkInTime)
-            const qVisitors = query(
-                collections.visitors,
-                where("checkInTime", ">=", Timestamp.fromDate(start)),
-                where("checkInTime", "<=", Timestamp.fromDate(end))
-            );
-            const snapsVisitors = await getDocs(qVisitors);
-            const visitorsData = snapsVisitors.docs.map(d => ({ ...d.data(), type: 'VISITOR', sortTime: d.data().checkInTime.toDate().getTime() }));
-
-            // 3. Fetch Vendor Visits
-            const qVendors = query(
-                collections.vendorVisits,
-                where("checkInTime", ">=", Timestamp.fromDate(start)),
-                where("checkInTime", "<=", Timestamp.fromDate(end))
-            );
-            const snapsVendors = await getDocs(qVendors);
-            const vendorsData = snapsVendors.docs.map(d => ({ ...d.data(), type: 'VENDOR', sortTime: d.data().checkInTime.toDate().getTime() }));
-
-            const allData = [...logsData, ...visitorsData, ...vendorsData].sort((a: any, b: any) => b.sortTime - a.sortTime);
-
-            if (allData.length === 0) {
+            if (!allData.length) {
                 alert("No logs found for the selected range.");
                 return;
             }
 
-            // Generate CSV content
             const headers = ["Timestamp", "Type", "Name/Company", "ID / Contact", "Action/Status", "Details", "Device S/N"];
+            const escape = (str: string) => `"${str ? str.toString().replace(/"/g, '""') : ''}"`;
             const csvRows = [
                 headers.join(","),
-                ...allData.map((row: any) => {
-                    const ts = new Date(row.sortTime).toLocaleString();
-                    let type = row.type;
-                    let name = '';
-                    let id = '';
-                    let action = '';
-                    let details = '';
-                    let sn = '';
-
-                    if (type === 'DEVICE') {
-                        type = 'EMPLOYEE';
-                        name = row.employeeName;
-                        id = row.empId;
-                        action = row.action;
-                        sn = row.serialNumber;
-                    } else if (type === 'VISITOR') {
-                        name = row.name;
-                        id = row.identifier || row.phone;
-                        action = row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT';
-                        details = `${row.type} - ${row.reason}`;
-                        sn = row.deviceSerial || '';
-                    } else if (type === 'VENDOR') {
-                        name = row.vendorName; // Company
-                        id = row.visitorName ? `${row.visitorName} (${row.visitorPhone})` : 'N/A';
-                        action = row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT';
-                        details = row.purpose;
-                    }
-
-                    // Escape quotes
-                    const escape = (str: string) => `"${str ? str.toString().replace(/"/g, '""') : ''}"`;
-
-                    return [
-                        escape(ts),
-                        escape(type),
-                        escape(name),
-                        escape(id),
-                        escape(action),
-                        escape(details),
-                        escape(sn)
-                    ].join(",");
-                })
+                ...allData.map((row: any) => [
+                    escape(new Date(row.timestamp || row.check_in_time).toLocaleString()),
+                    escape(row.entry_type || row.type || ''),
+                    escape(row.employee_name || row.name || row.vendor_name || ''),
+                    escape(row.emp_id || row.identifier || row.phone || ''),
+                    escape(row.action || (row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT')),
+                    escape(row.reason || row.purpose || ''),
+                    escape(row.serial_number || row.device_serial || '')
+                ].join(","))
             ];
 
             const csvBlob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
@@ -444,13 +364,13 @@ const SecurityDashboard = () => {
     };
 
     const filteredLogs = logs.filter(log =>
-        String(log.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        String(log.empId || '').toLowerCase().includes(searchTerm.toLowerCase())
+        String(log.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(log.emp_id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
         <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '5rem', display: 'flex', flexDirection: 'column' }}>
-            {/* Professional Header */}
+            {/* Header */}
             <header style={{
                 background: 'white',
                 padding: '1.25rem 2rem',
@@ -486,14 +406,16 @@ const SecurityDashboard = () => {
                     <button
                         onClick={async () => {
                             if (confirm('Logout?')) {
+                                const user = getUser();
                                 await logSystemEvent(
                                     { type: 'LOGOUT', category: 'AUTH' },
-                                    { id: auth.currentUser?.uid || 'unknown', type: 'USER' },
+                                    { id: user?.id || 'unknown', type: 'USER' },
                                     'SUCCESS',
                                     'Security User initiated logout'
                                 );
-                                await signOut(auth);
-                                window.location.href = 'https://minet-insurance-laptoptracking.web.app/';
+                                localStorage.removeItem('minet_token');
+                                localStorage.removeItem('minet_user');
+                                window.location.href = '/tracker/';
                             }
                         }}
                         style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: '0.5rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', cursor: 'pointer', color: 'var(--secondary)' }}
@@ -683,22 +605,23 @@ const SecurityDashboard = () => {
                                                             <span style={{ fontWeight: '700', marginRight: '6px' }}>{v.identifier}</span>
                                                             {v.type === 'QUICK' ? `• ${v.reason}` : `• Visiting: ${v.destination}`}
                                                         </p>
-                                                        {v.deviceType ? (
+                                                        {v.device_type ? (
                                                             <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', background: '#f8fafc', padding: '0.4rem', borderRadius: '4px', border: '1px dashed #cbd5e1' }}>
-                                                                <u style={{ textDecoration: 'none', fontWeight: '700', color: '#475569' }}>Asset declared:</u> {v.deviceType} - {v.deviceMakeModel} {v.deviceSerial ? `(S/N: ${v.deviceSerial})` : ''}
+                                                                <u style={{ textDecoration: 'none', fontWeight: '700', color: '#475569' }}>Asset declared:</u> {v.device_type} - {v.device_make_model} {v.device_serial ? `(S/N: ${v.device_serial})` : ''}
                                                             </div>
                                                         ) : v.type === 'STANDARD' && (
                                                             <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
                                                                 No Asset Declared
                                                             </div>
                                                         )}
-                                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>Since {v.checkInTime?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                                            Since {v.check_in_time ? new Date(v.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                        </p>
                                                     </div>
                                                     <button
                                                         onClick={async () => {
                                                             if (confirm(`Check out ${v.name}?`)) {
                                                                 await checkOutVisitor(v.id);
-                                                                // automated update via subscription
                                                             }
                                                         }}
                                                         style={{ background: '#fee2e2', color: 'var(--danger)', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer' }}
@@ -747,17 +670,18 @@ const SecurityDashboard = () => {
                                                     {vendorVisits.map(v => (
                                                         <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem', borderLeft: '4px solid var(--primary)' }}>
                                                             <div>
-                                                                <h4 style={{ margin: 0 }}>{v.vendorName}</h4>
+                                                                <h4 style={{ margin: 0 }}>{v.vendor_name}</h4>
                                                                 <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                                                                    <span style={{ fontWeight: '700' }}>{v.visitorName}</span> • {v.purpose}
+                                                                    <span style={{ fontWeight: '700' }}>{v.visitor_name}</span> • {v.purpose}
                                                                 </p>
-                                                                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>In since {v.checkInTime?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                                                                    In since {v.check_in_time ? new Date(v.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                                </p>
                                                             </div>
                                                             <button
                                                                 onClick={async () => {
-                                                                    if (confirm(`Check out ${v.vendorName}?`)) {
+                                                                    if (confirm(`Check out ${v.vendor_name}?`)) {
                                                                         await checkOutVendorVisit(v.id);
-                                                                        // automated update via subscription
                                                                     }
                                                                 }}
                                                                 style={{ background: 'white', border: '1px solid #e2e8f0', color: 'var(--secondary)', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer' }}
@@ -773,11 +697,11 @@ const SecurityDashboard = () => {
                                         {/* Registered Vendors List */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>Registered Vendors</h3>
-                                            {vendors.filter(v => String(v.fullName || '').toLowerCase().includes(searchVisitor.toLowerCase()) || String(v.company || '').toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
+                                            {vendors.filter(v => String(v.full_name || '').toLowerCase().includes(searchVisitor.toLowerCase()) || String(v.company || '').toLowerCase().includes(searchVisitor.toLowerCase())).map(v => (
                                                 <div key={v.id} className="glass-card visitor-card" style={{ padding: '1rem' }}>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <h4 style={{ margin: 0 }}>{v.fullName}</h4>
+                                                            <h4 style={{ margin: 0 }}>{v.full_name}</h4>
                                                             {v.company && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>@ {v.company}</span>}
                                                         </div>
                                                         <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Supplies: {v.supplies}</p>
@@ -785,7 +709,7 @@ const SecurityDashboard = () => {
                                                     <div className="visitor-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                                                         <button
                                                             onClick={async () => {
-                                                                if (confirm(`Delete vendor profile for ${v.fullName}?`)) {
+                                                                if (confirm(`Delete vendor profile for ${v.full_name}?`)) {
                                                                     await deleteVendor(v.id);
                                                                 }
                                                             }}
@@ -817,38 +741,37 @@ const SecurityDashboard = () => {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <h3 style={{ margin: 0, fontSize: '1rem', color: '#64748b' }}>Today's Activities</h3>
-                                    {/* Export button removed as requested */}
                                 </div>
                                 {[
-                                    ...logs.map(l => ({ ...l, sortTime: l.timestamp?.toDate().getTime() || 0, type: 'DEVICE' })),
-                                    ...visitorLogs.map(v => ({ ...v, sortTime: v.checkInTime?.toDate().getTime() || 0, type: 'VISITOR' })),
-                                    ...vendorLogs.map(v => ({ ...v, sortTime: v.checkInTime?.toDate().getTime() || 0, type: 'VENDOR' }))
+                                    ...logs.map(l => ({ ...l, sortTime: new Date(l.timestamp || 0).getTime(), entryType: 'DEVICE' })),
+                                    ...visitorLogs.map(v => ({ ...v, sortTime: new Date(v.check_in_time || 0).getTime(), entryType: 'VISITOR' })),
+                                    ...vendorLogs.map(v => ({ ...v, sortTime: new Date(v.check_in_time || 0).getTime(), entryType: 'VENDOR' }))
                                 ].sort((a, b) => b.sortTime - a.sortTime).map((item, idx) => (
-                                    <div key={`${item.type}-${item.id}-${idx}`} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${item.type === 'DEVICE' ? (item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)') : (item.status === 'IN' ? '#10b981' : '#64748b')}` }}>
+                                    <div key={`${item.entryType}-${item.id}-${idx}`} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${item.entryType === 'DEVICE' ? (item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)') : (item.status === 'IN' ? '#10b981' : '#64748b')}` }}>
                                         <div>
-                                            {item.type === 'DEVICE' ? (
+                                            {item.entryType === 'DEVICE' ? (
                                                 <>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <span style={{ fontWeight: '800', color: item.action === 'CHECK_IN' ? '#166534' : '#991b1b', fontSize: '0.75rem', background: item.action === 'CHECK_IN' ? '#dcfce7' : '#fee2e2', padding: '2px 6px', borderRadius: '4px' }}>
                                                             EMPLOYEE
                                                         </span>
-                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.employeeName}</span>
+                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.employee_name}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                                                         <span style={{ fontWeight: '700', color: item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)', marginRight: '6px' }}>
                                                             {item.action === 'CHECK_IN' ? 'IN' : 'OUT'}
                                                         </span>
-                                                        Device: {item.serialNumber}
+                                                        Device: {item.serial_number}
                                                     </div>
                                                 </>
-                                            ) : item.type === 'VISITOR' ? (
+                                            ) : item.entryType === 'VISITOR' ? (
                                                 <>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <span style={{ fontWeight: '800', color: 'var(--secondary)', fontSize: '0.75rem', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>
                                                             VISITOR
                                                         </span>
                                                         <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.name}</span>
-                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>({item.type /* QUICK/STANDARD */})</span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>({item.type})</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                                                         {item.reason} {item.status === 'OUT' ? '(Checked Out)' : ''}
@@ -860,7 +783,7 @@ const SecurityDashboard = () => {
                                                         <span style={{ fontWeight: '800', color: '#b45309', fontSize: '0.75rem', background: '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>
                                                             VENDOR
                                                         </span>
-                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.vendorName}</span>
+                                                        <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{item.vendor_name}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                                                         {item.purpose} {item.status === 'OUT' ? '(Checked Out)' : ''}
@@ -896,11 +819,11 @@ const SecurityDashboard = () => {
                                                     {log.action === 'CHECK_IN' ? <LogIn size={18} /> : <LogOut size={18} />}
                                                 </div>
                                                 <div>
-                                                    <p style={{ margin: 0, fontWeight: '700', color: 'var(--secondary)' }}>{log.employeeName}</p>
+                                                    <p style={{ margin: 0, fontWeight: '700', color: 'var(--secondary)' }}>{log.employee_name}</p>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>SN: {log.serialNumber}</p>
+                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>SN: {log.serial_number}</p>
                                                         <p style={{ margin: 0, fontSize: '0.65rem', color: '#94a3b8', fontFamily: 'monospace' }}>
-                                                            Audit: {log.readableLogstamp || new Date(log.timestamp.seconds * 1000).toLocaleString()}
+                                                            Audit: {log.readable_logstamp || new Date(log.timestamp).toLocaleString()}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -949,11 +872,7 @@ const SecurityDashboard = () => {
                                 </div>
                                 <div>
                                     <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8', fontWeight: '700' }}>CURRENT STATUS</p>
-                                    <span style={{
-                                        fontWeight: '800',
-                                        color: scannedMetadata.currentStatus === 'CHECK_IN' ? '#10b981' : 'var(--primary)',
-                                        fontSize: '0.9rem'
-                                    }}>
+                                    <span style={{ fontWeight: '800', color: scannedMetadata.currentStatus === 'CHECK_IN' ? '#10b981' : 'var(--primary)', fontSize: '0.9rem' }}>
                                         ● {scannedMetadata.currentStatus === 'CHECK_IN' ? 'INSIDE OFFICE' : 'CHECKED OUT'}
                                     </span>
                                 </div>
@@ -1051,15 +970,7 @@ const SecurityDashboard = () => {
                     <button
                         onClick={handleExportCSV}
                         className="btn-primary"
-                        style={{
-                            height: '3.5rem',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.75rem',
-                            background: 'var(--secondary)'
-                        }}
+                        style={{ height: '3.5rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', background: 'var(--secondary)' }}
                     >
                         <Download size={20} /> DOWNLOAD CSV LOGS
                     </button>
@@ -1071,12 +982,9 @@ const SecurityDashboard = () => {
                 <form onSubmit={async (e) => {
                     e.preventDefault();
                     if (!visitorForm.name || !visitorForm.reason) return alert("Name and Reason are required.");
-
-                    // Validation for Quick Visitors
                     if (visitorType === 'QUICK' && !visitorForm.identifier) {
                         return alert("National ID or Passport No. is required for Quick Visitors.");
                     }
-
                     await addVisitor({
                         type: visitorType,
                         name: visitorForm.name,
@@ -1090,7 +998,6 @@ const SecurityDashboard = () => {
                         deviceColor: visitorForm.deviceColor
                     });
                     setShowVisitorModal(false);
-                    // loadVisitorData(); // handled by subscription
                     alert("Visitor checked in successfully.");
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
@@ -1098,8 +1005,6 @@ const SecurityDashboard = () => {
                         <label style={labelStyle}>Full Name</label>
                         <input value={visitorForm.name} onChange={e => setVisitorForm({ ...visitorForm, name: e.target.value })} style={inputStyle} required />
                     </div>
-
-                    {/* ID Field - Required for Both now */}
                     <div>
                         <label style={labelStyle}>National ID (or Passport No.) {visitorType === 'QUICK' && '*'}</label>
                         <input
@@ -1139,53 +1044,30 @@ const SecurityDashboard = () => {
                             <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Briefcase size={16} /> Asset Declaration (Optional)
                             </h4>
-
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div>
                                     <label style={labelStyle}>Device Type</label>
-                                    <input
-                                        value={visitorForm.deviceType}
-                                        onChange={e => setVisitorForm({ ...visitorForm, deviceType: e.target.value })}
-                                        style={inputStyle}
-                                        placeholder="Laptop, Tablet..."
-                                    />
+                                    <input value={visitorForm.deviceType} onChange={e => setVisitorForm({ ...visitorForm, deviceType: e.target.value })} style={inputStyle} placeholder="Laptop, Tablet..." />
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                     <div>
                                         <label style={labelStyle}>Make / Model</label>
-                                        <input
-                                            value={visitorForm.deviceMakeModel}
-                                            onChange={e => setVisitorForm({ ...visitorForm, deviceMakeModel: e.target.value })}
-                                            style={inputStyle}
-                                            placeholder="e.g. Dell XPS"
-                                        />
+                                        <input value={visitorForm.deviceMakeModel} onChange={e => setVisitorForm({ ...visitorForm, deviceMakeModel: e.target.value })} style={inputStyle} placeholder="e.g. Dell XPS" />
                                     </div>
                                     <div>
                                         <label style={labelStyle}>Color</label>
-                                        <input
-                                            value={visitorForm.deviceColor}
-                                            onChange={e => setVisitorForm({ ...visitorForm, deviceColor: e.target.value })}
-                                            style={inputStyle}
-                                            placeholder="e.g. Silver"
-                                        />
+                                        <input value={visitorForm.deviceColor} onChange={e => setVisitorForm({ ...visitorForm, deviceColor: e.target.value })} style={inputStyle} placeholder="e.g. Silver" />
                                     </div>
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Serial Number (Optional)</label>
-                                    <input
-                                        value={visitorForm.deviceSerial}
-                                        onChange={e => setVisitorForm({ ...visitorForm, deviceSerial: e.target.value })}
-                                        style={inputStyle}
-                                        placeholder="e.g. ABC-123-XYZ"
-                                    />
+                                    <input value={visitorForm.deviceSerial} onChange={e => setVisitorForm({ ...visitorForm, deviceSerial: e.target.value })} style={inputStyle} placeholder="e.g. ABC-123-XYZ" />
                                 </div>
                             </div>
                         </div>
                     )}
 
                     <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>Check In Visitor</button>
-                    {/* SEED BUTTON FOR DEV */}
-
                 </form>
             </Modal>
 
@@ -1196,30 +1078,18 @@ const SecurityDashboard = () => {
                     if (!vendorForm.company || !vendorForm.phone) return alert("Company Name and Phone are required.");
                     await addVendor({
                         ...vendorForm,
-                        fullName: vendorForm.company, // Map company to fullName as required by backend
+                        fullName: vendorForm.company,
                     });
                     setShowVendorModal(false);
                     alert("Vendor registered.");
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
                         <label style={labelStyle}>Vendor Company Name</label>
-                        <input
-                            value={vendorForm.company}
-                            onChange={e => setVendorForm({ ...vendorForm, company: e.target.value })}
-                            style={inputStyle}
-                            placeholder="e.g. TechCorp Solutions"
-                            required
-                        />
+                        <input value={vendorForm.company} onChange={e => setVendorForm({ ...vendorForm, company: e.target.value })} style={inputStyle} placeholder="e.g. TechCorp Solutions" required />
                     </div>
                     <div>
                         <label style={labelStyle}>Company Phone Contacts</label>
-                        <input
-                            value={vendorForm.phone}
-                            onChange={e => setVendorForm({ ...vendorForm, phone: e.target.value })}
-                            style={inputStyle}
-                            placeholder="e.g. 020-XXXXXXX"
-                            required
-                        />
+                        <input value={vendorForm.phone} onChange={e => setVendorForm({ ...vendorForm, phone: e.target.value })} style={inputStyle} placeholder="e.g. 020-XXXXXXX" required />
                     </div>
                     <div>
                         <label style={labelStyle}>Supplies / Service</label>
@@ -1237,7 +1107,7 @@ const SecurityDashboard = () => {
             <Modal isOpen={showVendorCheckInModal} onClose={() => setShowVendorCheckInModal(false)} title="Vendor Check-In">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
-                        <h3 style={{ margin: '0 0 0.5rem 0' }}>{selectedVendor?.fullName}</h3>
+                        <h3 style={{ margin: '0 0 0.5rem 0' }}>{selectedVendor?.full_name}</h3>
                         <p style={{ margin: 0, fontSize: '0.9rem', color: '#64748b' }}>{selectedVendor?.company}</p>
                         <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>{selectedVendor?.supplies}</p>
                     </div>
@@ -1279,12 +1149,11 @@ const SecurityDashboard = () => {
                             await checkInVendor(
                                 selectedVendor.id,
                                 vendorCheckInForm.purpose,
-                                selectedVendor.fullName, // Company Name
+                                selectedVendor.full_name,
                                 vendorCheckInForm.employeeName,
                                 vendorCheckInForm.employeePhone
                             );
                             setShowVendorCheckInModal(false);
-                            // loadVisitorData(); // handled by subscription
                             alert("Vendor checked in.");
                         }}
                         className="btn-primary"
