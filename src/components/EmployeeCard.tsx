@@ -11,7 +11,7 @@ interface EmployeeCardProps {
         photo_url?: string;
     };
     onEdit: (emp: any) => void;
-    onDelete: (id: string) => void;
+    onDelete?: (id: string) => void;
     onView?: (emp: any) => void;
 }
 
@@ -79,20 +79,14 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                 >
                     <Edit3 size={18} />
                 </button>
-                <button
-                    onClick={(e) => { e.stopPropagation(); onDelete(employee.id); }}
-                    style={{
-                        padding: '0.5rem',
-                        background: '#fee2e2',
-                        color: 'var(--danger)',
-                        border: 'none',
-                        borderRadius: '0.5rem',
-                        display: 'flex',
-                        alignItems: 'center'
-                    }}
-                >
-                    <Trash2 size={18} />
-                </button>
+                {onDelete && (
+                       <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(employee.id); }}
+    
+    >
+        <Trash2 size={18} />
+    </button>
+)}
             </div>
         </div>
     );

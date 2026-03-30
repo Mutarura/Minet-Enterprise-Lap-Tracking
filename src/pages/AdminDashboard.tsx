@@ -43,7 +43,9 @@ import {
     UserX,
     Key,
     RefreshCw,
-    History
+    History,
+    Download,
+    Calendar
 } from 'lucide-react';
 import EmployeeCard from '../components/EmployeeCard';
 import DeviceCard from '../components/DeviceCard';
@@ -64,8 +66,14 @@ const AdminDashboard = () => {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [auditPage, setAuditPage] = useState(1);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, email: string } | null>(null);
+
+    // CSV Export State
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportDates, setExportDates] = useState({ start: '', end: '' });
+    const [exportFilename, setExportFilename] = useState('');
 
     const navigate = useNavigate();
 
@@ -188,6 +196,56 @@ const AdminDashboard = () => {
         if (activeTab === 'alerts' && alerts.length === 0) loadData(true);
         if (activeTab === 'audit_logs') loadData();
     }, [activeTab]);
+
+    // Reset audit page to 1 whenever search term changes
+    useEffect(() => {
+        setAuditPage(1);
+    }, [searchTerm]);
+
+    const handleExportCSV = async () => {
+        if (!exportDates.start || !exportDates.end) {
+            alert("Please select both start and end dates.");
+            return;
+        }
+        try {
+            const token = getToken();
+            const res = await fetch(`/api/logs/export?start=${exportDates.start}&end=${exportDates.end}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const allData = await res.json();
+
+            if (!allData.length) {
+                alert("No logs found for the selected range.");
+                return;
+            }
+
+            const headers = ["Timestamp", "Type", "Name/Company", "ID / Contact", "Action/Status", "Details", "Device S/N"];
+            const escape = (str: string) => `"${str ? str.toString().replace(/"/g, '""') : ''}"`;
+            const csvRows = [
+                headers.join(","),
+                ...allData.map((row: any) => [
+                    escape(new Date(row.timestamp || row.check_in_time).toLocaleString()),
+                    escape(row.entry_type || row.type || ''),
+                    escape(row.employee_name || row.name || row.vendor_name || ''),
+                    escape(row.emp_id || row.identifier || row.phone || ''),
+                    escape(row.action || (row.status === 'IN' ? 'CHECK_IN' : 'CHECK_OUT')),
+                    escape(row.reason || row.purpose || ''),
+                    escape(row.serial_number || row.device_serial || '')
+                ].join(","))
+            ];
+
+            const csvBlob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(csvBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${exportFilename || 'Minet_Master_Logs'}_${exportDates.start}_to_${exportDates.end}.csv`;
+            a.click();
+            setShowExportModal(false);
+        } catch (err) {
+            console.error("Export error:", err);
+            alert("Failed to export logs.");
+        }
+    };
 
     const handleEmployeeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -378,6 +436,14 @@ const AdminDashboard = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    {/* CSV Export Button */}
+                    <button
+                        onClick={() => setShowExportModal(true)}
+                        style={{ background: 'white', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', cursor: 'pointer', color: 'var(--secondary)' }}
+                        title="Export Logs to CSV"
+                    >
+                        <Download size={18} /> <span>Export</span>
+                    </button>
                     <button
                         onClick={async () => {
                             if (confirm('Are you sure you want to logout?')) {
@@ -456,7 +522,7 @@ const AdminDashboard = () => {
                                             setPhotoFile(null);
                                             setIsSubmitting(false);
                                         }}
-                                        onDelete={async (id) => { if (confirm('Delete employee?')) { await deleteEmployee(id); loadData(); resetMobileState(); } }}
+                                        onDelete={userRole === 'superadmin' ? async (id) => { if (confirm('Delete employee?')) { await deleteEmployee(id); loadData(); resetMobileState(); } } : undefined}
                                         onView={(e) => {
                                             setSelectedEmployee(e);
                                             setIsAddingEmployee(false);
@@ -761,53 +827,109 @@ const AdminDashboard = () => {
                             </div>
                         </div>
 
-                        <div className="glass-card" style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Time</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Actor</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Action</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Target</th>
-                                        <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {auditLogs.filter(log =>
-                                        searchTerm === '' ||
-                                        String(log.actor_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        String(log.event_type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        String(log.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        String(log.target_id || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                    ).map((log) => (
-                                        <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '1rem', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                                                <div style={{ fontWeight: '600' }}>{new Date(log.created_at).toLocaleDateString()}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(log.created_at).toLocaleTimeString()}</div>
-                                            </td>
-                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
-                                                <div style={{ fontWeight: '600' }}>{log.actor_name || 'Unknown'}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{log.actor_email}</div>
-                                            </td>
-                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
-                                                <span style={{ background: log.status === 'FAILURE' ? '#fee2e2' : '#f1f5f9', color: log.status === 'FAILURE' ? 'var(--danger)' : 'var(--secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', fontSize: '0.75rem' }}>
-                                                    {log.event_type || 'UNKNOWN'}
-                                                </span>
-                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>{log.category}</div>
-                                            </td>
-                                            <td style={{ padding: '1rem', verticalAlign: 'top' }}>
-                                                <div style={{ fontSize: '0.85rem', fontWeight: '600' }}>{log.target_type}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>ID: {log.target_id}</div>
-                                            </td>
-                                            <td style={{ padding: '1rem', maxWidth: '300px', verticalAlign: 'top' }}>{log.description}</td>
-                                        </tr>
-                                    ))}
-                                    {auditLogs.length === 0 && (
-                                        <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No audit logs found.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                        {(() => {
+                            const LOGS_PER_PAGE = 15;
+                            const filteredLogs = auditLogs.filter(log =>
+                                searchTerm === '' ||
+                                String(log.actor_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                String(log.event_type || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                String(log.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                String(log.target_id || '').toLowerCase().includes(searchTerm.toLowerCase())
+                            );
+                            const totalPages = Math.max(1, Math.ceil(filteredLogs.length / LOGS_PER_PAGE));
+                            const safePage = Math.min(auditPage, totalPages);
+                            const startIdx = (safePage - 1) * LOGS_PER_PAGE;
+                            const pageLogs = filteredLogs.slice(startIdx, startIdx + LOGS_PER_PAGE);
+
+                            return (
+                                <div className="glass-card" style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                                        <thead>
+                                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                                                <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Time</th>
+                                                <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Actor</th>
+                                                <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Action</th>
+                                                <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Target</th>
+                                                <th style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pageLogs.map((log) => (
+                                                <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                    <td style={{ padding: '1rem', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                                                        <div style={{ fontWeight: '600' }}>{new Date(log.created_at).toLocaleDateString()}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(log.created_at).toLocaleTimeString()}</div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                                        <div style={{ fontWeight: '600' }}>{log.actor_name || 'Unknown'}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{log.actor_email}</div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                                        <span style={{ background: log.status === 'FAILURE' ? '#fee2e2' : '#f1f5f9', color: log.status === 'FAILURE' ? 'var(--danger)' : 'var(--secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', fontSize: '0.75rem' }}>
+                                                            {log.event_type || 'UNKNOWN'}
+                                                        </span>
+                                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>{log.category}</div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem', verticalAlign: 'top' }}>
+                                                        <div style={{ fontSize: '0.85rem', fontWeight: '600' }}>{log.target_type}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>ID: {log.target_id}</div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem', maxWidth: '300px', verticalAlign: 'top' }}>{log.description}</td>
+                                                </tr>
+                                            ))}
+                                            {filteredLogs.length === 0 && (
+                                                <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No audit logs found.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+
+                                    {/* Pagination */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                        <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                                            {filteredLogs.length === 0
+                                                ? 'No logs'
+                                                : `Showing ${startIdx + 1}–${Math.min(startIdx + LOGS_PER_PAGE, filteredLogs.length)} of ${filteredLogs.length} logs`
+                                            }
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            <button
+                                                onClick={() => setAuditPage(p => Math.max(1, p - 1))}
+                                                disabled={safePage === 1}
+                                                style={{ padding: '0.4rem 0.9rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: safePage === 1 ? '#f8fafc' : 'white', color: safePage === 1 ? '#cbd5e1' : '#475569', fontWeight: '600', cursor: safePage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                ← Prev
+                                            </button>
+                                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                                                .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                                                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...');
+                                                    acc.push(p);
+                                                    return acc;
+                                                }, [])
+                                                .map((item, idx) =>
+                                                    item === '...'
+                                                        ? <span key={`ellipsis-${idx}`} style={{ padding: '0.4rem 0.5rem', color: '#94a3b8', fontSize: '0.85rem' }}>…</span>
+                                                        : <button
+                                                            key={item}
+                                                            onClick={() => setAuditPage(item as number)}
+                                                            style={{ padding: '0.4rem 0.75rem', border: '1px solid', borderColor: safePage === item ? 'var(--primary)' : '#e2e8f0', borderRadius: '6px', background: safePage === item ? 'var(--primary)' : 'white', color: safePage === item ? 'white' : '#475569', fontWeight: '700', cursor: 'pointer', fontSize: '0.85rem' }}
+                                                        >
+                                                            {item}
+                                                        </button>
+                                                )
+                                            }
+                                            <button
+                                                onClick={() => setAuditPage(p => Math.min(totalPages, p + 1))}
+                                                disabled={safePage === totalPages}
+                                                style={{ padding: '0.4rem 0.9rem', border: '1px solid #e2e8f0', borderRadius: '6px', background: safePage === totalPages ? '#f8fafc' : 'white', color: safePage === totalPages ? '#cbd5e1' : '#475569', fontWeight: '600', cursor: safePage === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 ) : (
                     /* Device Tabs */
@@ -831,7 +953,7 @@ const AdminDashboard = () => {
                                     key={dev.id}
                                     device={dev}
                                     onEdit={(d) => { setEditingDevice(d); setDevForm({ serialNumber: d.serial_number, make: d.make, model: d.model, color: d.color, assignedTo: d.assigned_to || '' }); setModalType('device'); setModalOpen(true); }}
-                                    onDelete={async (id) => { if (confirm('Retire this device permanently?')) { await retireDevice(id); resetMobileState(); } }}
+                                    onDelete={userRole === 'superadmin' ? async (id) => { if (confirm('Retire this device permanently?')) { await retireDevice(id); resetMobileState(); } } : undefined}
                                     onGenerateQR={handleGenerateQR}
                                 />
                             ))}
@@ -1034,6 +1156,47 @@ const AdminDashboard = () => {
                         {isSubmitting ? 'Saving...' : 'Save Employee'}
                     </button>
                 </form>
+            </Modal>
+
+            {/* CSV Export Modal */}
+            <Modal isOpen={showExportModal} onClose={() => setShowExportModal(false)} title="Export Activity Logs (CSV)">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '0.5rem' }}>
+                    <div style={{ background: '#f1f5f9', padding: '1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: '#475569' }}>
+                        <p style={{ margin: 0 }}><strong>Choose a single day or a range.</strong> To download logs for a specific day, set the start and end dates to that day.</p>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                            <label style={labelStyle}>Start Date</label>
+                            <input type="date" value={exportDates.start} onChange={e => setExportDates({ ...exportDates, start: e.target.value })} style={inputStyle} />
+                        </div>
+                        <div>
+                            <label style={labelStyle}>End Date</label>
+                            <input type="date" value={exportDates.end} onChange={e => setExportDates({ ...exportDates, end: e.target.value })} style={inputStyle} />
+                        </div>
+                    </div>
+                    <div>
+                        <label style={labelStyle}>Save File As...</label>
+                        <input
+                            type="text"
+                            value={exportFilename}
+                            onChange={e => setExportFilename(e.target.value)}
+                            placeholder="e.g. admin_logs_2024"
+                            style={inputStyle}
+                        />
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.4rem' }}>The file will be saved as a .csv file</p>
+                    </div>
+                    <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '4px', fontSize: '0.8rem', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                        <Calendar size={14} style={{ marginBottom: '4px', verticalAlign: 'middle', marginRight: '4px' }} />
+                        Max suggested range: 12 months.
+                    </div>
+                    <button
+                        onClick={handleExportCSV}
+                        className="btn-primary"
+                        style={{ height: '3.5rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', background: 'var(--secondary)' }}
+                    >
+                        <Download size={20} /> DOWNLOAD CSV LOGS
+                    </button>
+                </div>
             </Modal>
         </div>
     );
