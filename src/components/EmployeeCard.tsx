@@ -74,19 +74,29 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                         border: 'none',
                         borderRadius: '0.5rem',
                         display: 'flex',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        cursor: 'pointer'
                     }}
                 >
                     <Edit3 size={18} />
                 </button>
                 {onDelete && (
-                       <button
+                    <button
                         onClick={(e) => { e.stopPropagation(); onDelete(employee.id); }}
-    
-    >
-        <Trash2 size={18} />
-    </button>
-)}
+                        style={{
+                            padding: '0.5rem',
+                            background: 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                )}
             </div>
         </div>
     );

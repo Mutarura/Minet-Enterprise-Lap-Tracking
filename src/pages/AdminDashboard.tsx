@@ -1192,7 +1192,7 @@ const AdminDashboard = () => {
                     <button
                         onClick={handleExportCSV}
                         className="btn-primary"
-                        style={{ height: '3.5rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', background: 'var(--secondary)' }}
+                        style={{ height: '3.5rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', background: 'var(--primary)' }}
                     >
                         <Download size={20} /> DOWNLOAD CSV LOGS
                     </button>

@@ -72,25 +72,35 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
                         background: device.qr_code_url ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
                         color: device.qr_code_url ? '#10b981' : '#475569',
                         border: 'none',
-                        borderRadius: '0.5rem'
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer'
                     }}
                 >
                     <QrCode size={18} />
                 </button>
                 <button
                     onClick={() => onEdit(device)}
-                    style={{ padding: '0.5rem', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '0.5rem' }}
+                    style={{ padding: '0.5rem', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
                 >
                     <Edit3 size={18} />
                 </button>
                 {onDelete && (
-    <button
-        onClick={() => onDelete(device.id)}
-
-    >
-        <Trash2 size={18} />
-    </button>
-)}
+                    <button
+                        onClick={() => onDelete(device.id)}
+                        style={{
+                            padding: '0.5rem',
+                            background: 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                )}
             </div>
         </div>
     );
