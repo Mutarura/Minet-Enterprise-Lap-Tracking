@@ -82,7 +82,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onDelete, onEdit,
                 </button>
                 {onDelete && (
                     <button
-                        onClick={(e) => { e.stopPropagation(); onDelete(employee.id); }}
+                        onClick={(e) => { e.stopPropagation(); onDelete(employee.emp_id); }}
                         style={{
                             padding: '0.5rem',
                             background: 'var(--primary)',

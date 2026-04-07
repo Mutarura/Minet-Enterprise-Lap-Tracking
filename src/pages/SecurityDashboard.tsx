@@ -227,38 +227,94 @@ const SecurityDashboard = () => {
         }
     };
 
-    const handleScan = async (data: string) => {
-        try {
-            const parsed = JSON.parse(data);
+    const handleScan = async (rawData: string) => {
+  try {
+    // Support both new format (plain serial number string)
+    // and old format (JSON object with serialNumber field)
+    // so existing printed labels keep working during transition
+    let serialNumber: string;
+    let fallbackMake = '';
+    let fallbackModel = '';
+    let fallbackColor = 'N/A';
+    let fallbackType = 'UNKNOWN';
+    let fallbackEmpId = 'Unassigned';
+    let fallbackEmployeeName = 'Unassigned';
 
-            let employeePhotoURL = parsed.employeePhotoURL || '';
-            let currentStatus = 'UNKNOWN';
-            let lastActionAt: any = null;
-            try {
-                const [latestEmployee, deviceData] = await Promise.all([
-                    getEmployeeByEmpId(parsed.empId),
-                    (await fetch(`/api/devices/${parsed.serialNumber}`, {
-                        headers: { 'Authorization': `Bearer ${getToken()}` }
-                    })).json()
-                ]);
-                employeePhotoURL = (latestEmployee as any)?.photo_url || employeePhotoURL || '';
-                currentStatus = deviceData.last_action || 'UNKNOWN';
-                lastActionAt = deviceData.last_action_at || null;
-            } catch {
-            }
+    try {
+      const parsed = JSON.parse(rawData);
+      // Old QR format — had full metadata object
+      serialNumber = parsed.serialNumber;
+      fallbackMake = parsed.make || '';
+      fallbackModel = parsed.model || '';
+      fallbackColor = parsed.color || 'N/A';
+      fallbackType = parsed.type || 'UNKNOWN';
+      fallbackEmpId = parsed.empId || 'Unassigned';
+      fallbackEmployeeName = parsed.employeeName || 'Unassigned';
+    } catch {
+      // New QR format — raw serial number string
+      serialNumber = rawData.trim();
+    }
 
-            setScannedMetadata({
-                ...parsed,
-                employeePhotoURL,
-                currentStatus,
-                lastActionAt
-            });
-            setScanState('reviewing');
-        } catch (e) {
-            console.error("Invalid QR:", e);
-            alert("This QR code is invalid or the data is corrupted.");
-        }
-    };
+    if (!serialNumber) {
+      alert("Invalid QR code — no serial number found.");
+      return;
+    }
+
+    // Fetch all live data from DB
+    let empId = fallbackEmpId;
+    let employeeName = fallbackEmployeeName;
+    let employeePhotoURL = '';
+    let currentStatus = 'UNKNOWN';
+    let lastActionAt: any = null;
+    let color = fallbackColor;
+    let type = fallbackType;
+    let make = fallbackMake;
+    let model = fallbackModel;
+
+    try {
+      const deviceData = await (
+        await fetch(`/api/devices/${serialNumber}`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        })
+      ).json();
+
+      make = deviceData.make || fallbackMake;
+      model = deviceData.model || fallbackModel;
+      color = deviceData.color || fallbackColor;
+      type = deviceData.type || fallbackType;
+      currentStatus = deviceData.last_action || 'UNKNOWN';
+      lastActionAt = deviceData.last_action_at || null;
+      empId = deviceData.assigned_to || 'Unassigned';
+      employeeName = deviceData.assigned_employee_name || 'Unassigned';
+
+      if (empId !== 'Unassigned') {
+        const employeeData: any = await getEmployeeByEmpId(empId);
+        employeePhotoURL = employeeData?.photo_url || '';
+      }
+    } catch {
+      console.warn('Could not fetch live device data for:', serialNumber);
+      // Fall through with whatever we have from the QR payload
+    }
+
+    setScannedMetadata({
+      serialNumber,
+      make,
+      model,
+      empId,
+      employeeName,
+      employeePhotoURL,
+      color,
+      type,
+      currentStatus,
+      lastActionAt,
+    });
+    setScanState('reviewing');
+
+  } catch (e) {
+    console.error("Scan error:", e);
+    alert("This QR code is invalid or corrupted.");
+  }
+};
 
     const handleAction = async (action: 'CHECK_IN' | 'CHECK_OUT') => {
         if (action === scannedMetadata.currentStatus) {

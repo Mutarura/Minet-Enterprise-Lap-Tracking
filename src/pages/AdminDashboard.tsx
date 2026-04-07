@@ -69,6 +69,8 @@ const AdminDashboard = () => {
     const [auditPage, setAuditPage] = useState(1);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, email: string } | null>(null);
+    // Device assignment filter — Company tab only
+    const [deviceFilter, setDeviceFilter] = useState<'ALL' | 'ASSIGNED' | 'UNASSIGNED'>('ALL');
 
     // CSV Export State
     const [showExportModal, setShowExportModal] = useState(false);
@@ -264,7 +266,7 @@ const AdminDashboard = () => {
                 alert("Employee added successfully!");
             } else {
                 if (!selectedEmployee?.emp_id) throw new Error("No employee selected for update");
-                  await updateEmployee(selectedEmployee.emp_id, {
+                await updateEmployee(selectedEmployee.emp_id, {
                     name: empForm.name.trim(),
                     departmentOrFloor: empForm.departmentOrFloor.trim(),
                     photoFile: photoFile || undefined
@@ -346,25 +348,20 @@ const AdminDashboard = () => {
     const handleGenerateQR = async (device: any) => {
         try {
             const employee = employees.find(e => e.emp_id === device.assigned_to);
-            const photoVal = (employee?.photo_url && employee.photo_url.startsWith('data:'))
-                ? "[BASE64_IMAGE]"
-                : (employee?.photo_url || '');
-
-            const metadata = {
-                serialNumber: device.serial_number,
-                empId: device.assigned_to || 'Unassigned',
-                employeeName: employee?.name || 'N/A',
-                make: device.make,
-                model: device.model,
-                color: device.color || 'N/A',
-                type: device.type,
-                employeePhotoURL: photoVal
-            };
-            const url = await generateQRCode(metadata);
-
+            const url = await generateQRCode(device.serial_number);
             await updateDevice(device.serial_number, { qrCodeUrl: url });
-
-            setQrData({ url, device: metadata });
+            setQrData({
+                url,
+                device: {
+                    serialNumber: device.serial_number,
+                    make: device.make,
+                    model: device.model,
+                    color: device.color || 'N/A',
+                    type: device.type,
+                    empId: device.assigned_to || 'Unassigned',
+                    employeeName: employee?.name || 'Unassigned',
+                }
+            });
             setModalType('qr');
             setModalOpen(true);
             loadData();
@@ -384,10 +381,15 @@ const AdminDashboard = () => {
         String(e.emp_id || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const filteredDevices = devices.filter(d =>
-        (activeTab === 'company' ? d.type === 'COMPANY' : d.type === 'BYOD') &&
-        String(d.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredDevices = devices.filter(d => {
+        if (activeTab === 'company' ? d.type !== 'COMPANY' : d.type !== 'BYOD') return false;
+        if (String(d.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase()) === false) return false;
+        if (activeTab === 'company') {
+            if (deviceFilter === 'ASSIGNED' && !d.assigned_to) return false;
+            if (deviceFilter === 'UNASSIGNED' && d.assigned_to) return false;
+        }
+        return true;
+    });
 
     const getAssignedDevices = (empId: string) => devices.filter(d => d.assigned_to === empId);
 
@@ -436,7 +438,6 @@ const AdminDashboard = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    {/* CSV Export Button */}
                     <button
                         onClick={() => setShowExportModal(true)}
                         style={{ background: 'white', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', cursor: 'pointer', color: 'var(--secondary)' }}
@@ -575,7 +576,14 @@ const AdminDashboard = () => {
                                                                 <button onClick={async () => {
                                                                     try {
                                                                         await updateDevice(dev.serial_number, { assignedTo: selectedEmployee.emp_id });
+                                                                        await logSystemEvent(
+                                                                            { type: 'DEVICE_ASSIGNED', category: 'DEVICE_MANAGEMENT' },
+                                                                            { id: dev.serial_number, type: 'DEVICE', metadata: { assignedTo: selectedEmployee.emp_id } },
+                                                                            'SUCCESS',
+                                                                            `Device ${dev.serial_number} assigned to ${selectedEmployee.emp_id} via employee panel`
+                                                                        );
                                                                         setAssigningType(null);
+                                                                        loadData();
                                                                         alert("Device assigned successfully!");
                                                                     } catch (err: any) { alert(err.message); }
                                                                 }} className="btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>Assign</button>
@@ -653,7 +661,23 @@ const AdminDashboard = () => {
                                                                         {dev ? (
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                                                                                 <span style={{ fontWeight: '700', color: 'var(--primary)', background: 'rgba(226, 26, 34, 0.05)', padding: '2px 6px', borderRadius: '4px' }}>{dev.serial_number}</span>
-                                                                                <button type="button" onClick={async () => { if (confirm('Unassign this device?')) { await updateDevice(dev.serial_number, { assignedTo: null }); loadData(); } }} style={{ background: '#fee2e2', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}>
+                                                                                {/* CHANGE 4f: unassign now includes audit log */}
+                                                                                <button type="button" onClick={async () => {
+                                                                                    if (confirm('Unassign this device?')) {
+                                                                                        try {
+                                                                                            await updateDevice(dev.serial_number, { assignedTo: null });
+                                                                                            await logSystemEvent(
+                                                                                                { type: 'DEVICE_UNASSIGNED', category: 'DEVICE_MANAGEMENT' },
+                                                                                                { id: dev.serial_number, type: 'DEVICE', metadata: { previousAssignee: selectedEmployee.emp_id } },
+                                                                                                'SUCCESS',
+                                                                                                `Device ${dev.serial_number} unassigned from ${selectedEmployee.emp_id} via employee panel`
+                                                                                            );
+                                                                                            loadData();
+                                                                                        } catch (err: any) {
+                                                                                            alert('Failed to unassign: ' + err.message);
+                                                                                        }
+                                                                                    }
+                                                                                }} style={{ background: '#fee2e2', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}>
                                                                                     <Trash2 size={14} />
                                                                                 </button>
                                                                             </div>
@@ -932,17 +956,58 @@ const AdminDashboard = () => {
                         })()}
                     </div>
                 ) : (
-                    /* Device Tabs */
+                    /* Device Tabs — Company and BYOD */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                        <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
-                            <div className="glass-card search-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                        {/* CHANGE 4d: filter bar added for Company tab */}
+                        <div className="admin-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div className="glass-card search-card" style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                 <Search size={20} color="#94a3b8" />
-                                <input type="text" placeholder={`Search ${activeTab} serial...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }} />
+                                <input
+                                    type="text"
+                                    placeholder={`Search ${activeTab} serial...`}
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
+                                />
                             </div>
-                            <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
+
+                            {activeTab === 'company' && (
+                                <div style={{ display: 'flex', background: 'white', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                                    {(['ALL', 'ASSIGNED', 'UNASSIGNED'] as const).map(f => (
+                                        <button
+                                            key={f}
+                                            onClick={() => setDeviceFilter(f)}
+                                            style={{
+                                                padding: '0 1rem',
+                                                minHeight: '44px',
+                                                background: deviceFilter === f ? 'var(--primary)' : 'transparent',
+                                                color: deviceFilter === f ? 'white' : '#64748b',
+                                                border: 'none',
+                                                borderRight: f !== 'UNASSIGNED' ? '1px solid #e2e8f0' : 'none',
+                                                fontWeight: '700',
+                                                fontSize: '0.8rem',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {f === 'ALL' ? 'All' : f === 'ASSIGNED' ? '● Assigned' : '○ Unassigned'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <button
+                                onClick={() => loadData(true)}
+                                className="glass-card compact-card"
+                                style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}
+                            >
                                 <RefreshCw size={20} /> Refresh
                             </button>
-                            <button onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' }); setModalOpen(true); }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button
+                                onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' }); setModalOpen(true); }}
+                                className="btn-primary"
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
                                 <Plus size={20} /> Add {activeTab === 'company' ? 'Laptop' : 'Device'}
                             </button>
                         </div>
@@ -1000,6 +1065,7 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 ) : (
+                    /* CHANGE 4e: device edit form with Unassign button for COMPANY devices */
                     <form onSubmit={handleDeviceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                         <div>
                             <label style={labelStyle}>Serial Number</label>
@@ -1020,15 +1086,71 @@ const AdminDashboard = () => {
                             <input value={devForm.color} onChange={e => setDevForm({ ...devForm, color: e.target.value })} placeholder="e.g. Silver" style={inputStyle} required />
                         </div>
                         <div>
-                            <label style={labelStyle}>Assign to Employee</label>
-                            <select value={devForm.assignedTo || ''} onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })} style={inputStyle} required>
+                            <label style={labelStyle}>
+                                Assign to Employee
+                                {editingDevice?.type === 'COMPANY' && devForm.assignedTo && (
+                                    <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#94a3b8', fontWeight: '400' }}>
+                                        (currently: {editingDevice.assigned_employee_name || devForm.assignedTo})
+                                    </span>
+                                )}
+                            </label>
+                            <select
+                                value={devForm.assignedTo || ''}
+                                onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })}
+                                style={inputStyle}
+                                required={!editingDevice}
+                            >
                                 <option value="">-- Select Employee --</option>
                                 {employees.map(e => (
                                     <option key={e.id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
                                 ))}
                             </select>
                         </div>
-                        <button type="submit" className="btn-primary" style={{ marginTop: '1rem' }}>{editingDevice ? 'Update Device' : 'Register Device'}</button>
+
+                        {/* Unassign button — only for COMPANY devices that are currently assigned */}
+                        {editingDevice?.type === 'COMPANY' && devForm.assignedTo && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (confirm(`Unassign ${editingDevice.serial_number} from ${editingDevice.assigned_employee_name || devForm.assignedTo}?`)) {
+                                        try {
+                                            await updateDevice(editingDevice.serial_number, { assignedTo: null });
+                                            await logSystemEvent(
+                                                { type: 'DEVICE_UNASSIGNED', category: 'DEVICE_MANAGEMENT' },
+                                                { id: editingDevice.serial_number, type: 'DEVICE', metadata: { previousAssignee: devForm.assignedTo } },
+                                                'SUCCESS',
+                                                `Device ${editingDevice.serial_number} unassigned from ${devForm.assignedTo}`
+                                            );
+                                            setModalOpen(false);
+                                            loadData();
+                                        } catch (err: any) {
+                                            alert('Failed to unassign: ' + err.message);
+                                        }
+                                    }
+                                }}
+                                style={{
+                                    padding: '0.75rem',
+                                    background: '#fff7ed',
+                                    color: '#c2410c',
+                                    border: '1px solid #fed7aa',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    width: '100%'
+                                }}
+                            >
+                                <X size={16} /> Unassign Device
+                            </button>
+                        )}
+
+                        <button type="submit" className="btn-primary" style={{ marginTop: '0.5rem' }}>
+                            {editingDevice ? 'Update Device' : 'Register Device'}
+                        </button>
                     </form>
                 )}
             </Modal>
