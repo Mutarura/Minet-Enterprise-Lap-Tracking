@@ -911,6 +911,11 @@ const SecurityDashboard = () => {
                         <div>
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: '700' }}>EMPLOYEE ID</p>
                             <h2 style={{ fontSize: '2.5rem', color: 'var(--primary)', margin: 0, letterSpacing: '1px' }}>{scannedMetadata.empId}</h2>
+                            {scannedMetadata.employeeName && scannedMetadata.employeeName !== 'Unassigned' && (
+                                <p style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--secondary)', margin: '0.4rem 0 0 0' }}>
+                                    {scannedMetadata.employeeName}
+                                </p>
+                            )}
                         </div>
 
                         <div className="glass-card" style={{ padding: '1.5rem', textAlign: 'left', background: '#fff' }}>

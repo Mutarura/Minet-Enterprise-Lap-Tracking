@@ -6,12 +6,13 @@ interface DeviceCardProps {
     id: string;
     serial_number: string;
     type: 'COMPANY' | 'BYOD';
-    make: string;
-    model: string;
-    color: string;
+    make?: string | null;
+    model?: string | null;
+    color?: string | null;
     assigned_to?: string | null;
     assigned_employee_name?: string | null;
     qr_code_url?: string | null;
+    is_leased?: boolean;
   };
   onEdit: (dev: any) => void;
   onDelete?: (id: string) => void;
@@ -20,6 +21,9 @@ interface DeviceCardProps {
 
 const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGenerateQR }) => {
   const isAssigned = !!device.assigned_to;
+  const displayName = (device.make || device.model) 
+    ? `${device.make || ''} ${device.model || ''}`.trim()
+    : `Device: ${device.serial_number}`;
 
   return (
     <div className="glass-card device-card" style={{ padding: '1.25rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -39,7 +43,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--secondary)' }}>{device.make} {device.model}</h3>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--secondary)' }}>{displayName}</h3>
           <span style={{
             fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px',
             background: device.type === 'COMPANY' ? 'var(--primary)' : '#475569',
@@ -62,6 +66,9 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, onDelete, onEdit, onGen
               : 'Unassigned'}
           </span>
         </div>
+        {device.is_leased && (
+          <span style={{ fontSize: '0.7rem', fontWeight: '800', background: 'rgba(226,26,34,0.1)', color: 'var(--primary)', padding: '2px 6px', borderRadius: '4px', marginTop: '0.25rem', display: 'inline-block' }}>LEASED</span>
+        )}
       </div>
 
       {/* Actions */}

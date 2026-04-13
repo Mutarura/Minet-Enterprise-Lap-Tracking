@@ -63,14 +63,13 @@ const AdminDashboard = () => {
     const [employees, setEmployees] = useState<any[]>([]);
     const [devices, setDevices] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [deviceFilter, setDeviceFilter] = useState<'all' | 'assigned' | 'unassigned' | 'leased'>('all');
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [auditPage, setAuditPage] = useState(1);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [newAccountInfo, setNewAccountInfo] = useState<{ username: string, email: string } | null>(null);
-    // Device assignment filter — Company tab only
-    const [deviceFilter, setDeviceFilter] = useState<'ALL' | 'ASSIGNED' | 'UNASSIGNED'>('ALL');
 
     // CSV Export State
     const [showExportModal, setShowExportModal] = useState(false);
@@ -89,7 +88,7 @@ const AdminDashboard = () => {
 
     const [empForm, setEmpForm] = useState({ empId: '', name: '', departmentOrFloor: '' });
     const [photoFile, setPhotoFile] = useState<File | null>(null);
-    const [devForm, setDevForm] = useState({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' });
+    const [devForm, setDevForm] = useState({ serialNumber: '', make: '', model: '', color: '', assignedTo: '', isLeased: false });
     const [isDragging, setIsDragging] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [assigningType, setAssigningType] = useState<'COMPANY' | 'BYOD' | null>(null);
@@ -114,7 +113,7 @@ const AdminDashboard = () => {
             setModalOpen(false);
             setQrData(null);
             setEditingDevice(null);
-            setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' });
+            setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '', isLeased: false });
             setShowEmpFormModal(false);
         }
     };
@@ -290,19 +289,14 @@ const AdminDashboard = () => {
         try {
             const type = activeTab === 'company' ? 'COMPANY' : 'BYOD';
 
-            if (!devForm.assignedTo && !editingDevice) {
-                alert("All devices must be assigned to an employee at registration.");
-                return;
-            }
-
             if (devForm.assignedTo) {
                 const assignedDevices = devices.filter(d =>
                     d.assigned_to === devForm.assignedTo &&
                     d.type === type &&
                     d.serial_number !== devForm.serialNumber
                 );
-                if (type === 'COMPANY' && assignedDevices.length >= 1) {
-                    alert(`This employee already has a COMPANY laptop assigned (${assignedDevices[0].serial_number}). Only one per type is permitted.`);
+                if (type === 'COMPANY' && assignedDevices.length >= 2) {
+                    alert(`This employee has reached the maximum allowed COMPANY devices (2).`);
                     return;
                 }
                 if (type === 'BYOD' && assignedDevices.length >= 2) {
@@ -312,10 +306,10 @@ const AdminDashboard = () => {
             }
 
             if (editingDevice) {
-                await updateDevice(editingDevice.serial_number, { ...devForm, type });
+                await updateDevice(editingDevice.serial_number, { ...devForm, type, isLeased: devForm.isLeased });
                 alert("Device saved successfully!");
             } else {
-                await addDevice({ ...devForm, type: type as any });
+                await addDevice({ ...devForm, type: type as any, isLeased: devForm.isLeased });
 
                 if (type === 'BYOD') {
                     const employee = employees.find(e => e.emp_id === devForm.assignedTo);
@@ -383,11 +377,10 @@ const AdminDashboard = () => {
 
     const filteredDevices = devices.filter(d => {
         if (activeTab === 'company' ? d.type !== 'COMPANY' : d.type !== 'BYOD') return false;
-        if (String(d.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase()) === false) return false;
-        if (activeTab === 'company') {
-            if (deviceFilter === 'ASSIGNED' && !d.assigned_to) return false;
-            if (deviceFilter === 'UNASSIGNED' && d.assigned_to) return false;
-        }
+        if (searchTerm && !String(d.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
+        if (deviceFilter === 'assigned') return !!d.assigned_to;
+        if (deviceFilter === 'unassigned') return !d.assigned_to;
+        if (deviceFilter === 'leased') return d.is_leased === true;
         return true;
     });
 
@@ -959,55 +952,25 @@ const AdminDashboard = () => {
                     /* Device Tabs — Company and BYOD */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         {/* CHANGE 4d: filter bar added for Company tab */}
-                        <div className="admin-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                            <div className="glass-card search-card" style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
+                        <div className="admin-actions" style={{ display: 'flex', gap: '1rem' }}>
+                            <div className="glass-card search-card" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
                                 <Search size={20} color="#94a3b8" />
-                                <input
-                                    type="text"
-                                    placeholder={`Search ${activeTab} serial...`}
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                    style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }}
-                                />
+                                <input type="text" placeholder={`Search ${activeTab} serial...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ border: 'none', padding: '1rem', width: '100%', outline: 'none', background: 'transparent' }} />
                             </div>
-
-                            {activeTab === 'company' && (
-                                <div style={{ display: 'flex', background: 'white', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-                                    {(['ALL', 'ASSIGNED', 'UNASSIGNED'] as const).map(f => (
-                                        <button
-                                            key={f}
-                                            onClick={() => setDeviceFilter(f)}
-                                            style={{
-                                                padding: '0 1rem',
-                                                minHeight: '44px',
-                                                background: deviceFilter === f ? 'var(--primary)' : 'transparent',
-                                                color: deviceFilter === f ? 'white' : '#64748b',
-                                                border: 'none',
-                                                borderRight: f !== 'UNASSIGNED' ? '1px solid #e2e8f0' : 'none',
-                                                fontWeight: '700',
-                                                fontSize: '0.8rem',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.15s'
-                                            }}
-                                        >
-                                            {f === 'ALL' ? 'All' : f === 'ASSIGNED' ? '● Assigned' : '○ Unassigned'}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            <button
-                                onClick={() => loadData(true)}
-                                className="glass-card compact-card"
-                                style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}
+                            <select
+                                value={deviceFilter}
+                                onChange={e => setDeviceFilter(e.target.value as any)}
+                                style={{ padding: '0 0.75rem', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', background: 'white', color: '#475569', fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem', whiteSpace: 'nowrap', width: 'fit-content', minWidth: '130px' }}
                             >
+                                <option value="all">All Devices</option>
+                                <option value="assigned">Assigned</option>
+                                <option value="unassigned">Unassigned</option>
+                                {activeTab === 'company' && <option value="leased">Leased</option>}
+                            </select>
+                            <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
                                 <RefreshCw size={20} /> Refresh
                             </button>
-                            <button
-                                onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '' }); setModalOpen(true); }}
-                                className="btn-primary"
-                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
+                            <button onClick={() => { setModalType('device'); setEditingDevice(null); setDevForm({ serialNumber: '', make: '', model: '', color: '', assignedTo: '', isLeased: false }); setModalOpen(true); }} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Plus size={20} /> Add {activeTab === 'company' ? 'Laptop' : 'Device'}
                             </button>
                         </div>
@@ -1017,7 +980,7 @@ const AdminDashboard = () => {
                                 <DeviceCard
                                     key={dev.id}
                                     device={dev}
-                                    onEdit={(d) => { setEditingDevice(d); setDevForm({ serialNumber: d.serial_number, make: d.make, model: d.model, color: d.color, assignedTo: d.assigned_to || '' }); setModalType('device'); setModalOpen(true); }}
+                                    onEdit={(d) => { setEditingDevice(d); setDevForm({ serialNumber: d.serial_number, make: d.make, model: d.model, color: d.color, assignedTo: d.assigned_to || '', isLeased: d.is_leased || false }); setModalType('device'); setModalOpen(true); }}
                                     onDelete={userRole === 'superadmin' ? async (id) => { if (confirm('Retire this device permanently?')) { await retireDevice(id); resetMobileState(); } } : undefined}
                                     onGenerateQR={handleGenerateQR}
                                 />
@@ -1031,19 +994,12 @@ const AdminDashboard = () => {
             <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={modalType === 'qr' ? 'Security QR Code' : 'Device Management'}>
                 {modalType === 'qr' ? (
                     <div className="qr-preview-container">
-                        <div id="printable-label">
-                            <div className="label-header">
-                                <div className="label-logo-box">
-                                    <img src="/tracker/logo.png" className="label-logo" alt="Minet" />
-                                </div>
-                                <div className="label-tag">ASSET TAG</div>
-                            </div>
-                            <img src={qrData?.url} className="label-qr" alt="QR Code" />
-                            <div className="label-info">
-                                <h3 className="label-title">{qrData?.device.make} {qrData?.device.model}</h3>
-                                <p className="label-sn">S/N: {qrData?.device.serialNumber}</p>
-                                <p className="label-user">User: {qrData?.device.employeeName}</p>
-                            </div>
+                        <div id="printable-label" style={{ textAlign: 'center', padding: '1rem' }}>
+                            <img src="/tracker/logo.png" alt="Minet" style={{ height: '40px', marginBottom: '0.75rem', display: 'block', margin: '0 auto 0.75rem' }} />
+                            <img src={qrData?.url} alt="QR Code" style={{ width: '100%', maxWidth: '220px', display: 'block', margin: '0 auto' }} />
+                            <p style={{ fontWeight: '800', fontSize: '1rem', marginTop: '0.75rem', letterSpacing: '1px', textAlign: 'center' }}>
+                                {qrData?.device.serialNumber}
+                            </p>
                         </div>
                         <div className="no-print button-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             <button className="btn-primary" onClick={handlePrintLabel} style={{ width: '100%', justifyContent: 'center' }}>
@@ -1052,7 +1008,7 @@ const AdminDashboard = () => {
                             <button type="button" style={{ padding: '0.75rem', background: 'white', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', fontSize: '0.875rem' }}
                                 onClick={() => {
                                     if (!qrData?.url) return;
-                                    const filename = `${qrData.device.type}-${qrData.device.serialNumber}-${qrData.device.employeeName}.png`.replace(/[^a-z0-9\-\. ]/gi, '_');
+                                    const filename = `${qrData.device.serialNumber}-${qrData.device.employeeName}-${qrData.device.empId}.png`.replace(/[^a-z0-9\-\. ]/gi, '_');
                                     const link = document.createElement('a');
                                     link.href = qrData.url;
                                     link.download = filename;
@@ -1074,17 +1030,35 @@ const AdminDashboard = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <div>
                                 <label style={labelStyle}>Make</label>
-                                <input value={devForm.make} onChange={e => setDevForm({ ...devForm, make: e.target.value })} placeholder="e.g. Dell" style={inputStyle} required />
+                                <input value={devForm.make} onChange={e => setDevForm({ ...devForm, make: e.target.value })} placeholder="e.g. Dell" style={inputStyle} />
                             </div>
                             <div>
                                 <label style={labelStyle}>Model</label>
-                                <input value={devForm.model} onChange={e => setDevForm({ ...devForm, model: e.target.value })} placeholder="e.g. XPS 13" style={inputStyle} required />
+                                <input value={devForm.model} onChange={e => setDevForm({ ...devForm, model: e.target.value })} placeholder="e.g. XPS 13" style={inputStyle} />
                             </div>
                         </div>
                         <div>
                             <label style={labelStyle}>Color</label>
-                            <input value={devForm.color} onChange={e => setDevForm({ ...devForm, color: e.target.value })} placeholder="e.g. Silver" style={inputStyle} required />
+                            <input value={devForm.color} onChange={e => setDevForm({ ...devForm, color: e.target.value })} placeholder="e.g. Silver" style={inputStyle} />
                         </div>
+                        {activeTab === 'company' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
+                                <input
+                                    type="checkbox"
+                                    id="isLeased"
+                                    checked={devForm.isLeased}
+                                    onChange={e => setDevForm({ ...devForm, isLeased: e.target.checked })}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                                />
+                                <label htmlFor="isLeased" style={{ cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem', color: '#475569', userSelect: 'none' }}>
+                                    Leased Device
+                                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', fontWeight: '400' }}>Check if this laptop is leased from a vendor</span>
+                                </label>
+                                {devForm.isLeased && (
+                                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', fontWeight: '800', background: 'rgba(226,26,34,0.1)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '4px' }}>LEASED</span>
+                                )}
+                            </div>
+                        )}
                         <div>
                             <label style={labelStyle}>
                                 Assign to Employee
@@ -1098,9 +1072,8 @@ const AdminDashboard = () => {
                                 value={devForm.assignedTo || ''}
                                 onChange={e => setDevForm({ ...devForm, assignedTo: e.target.value })}
                                 style={inputStyle}
-                                required={!editingDevice}
                             >
-                                <option value="">-- Select Employee --</option>
+                                <option value="">-- Unassigned (optional) --</option>
                                 {employees.map(e => (
                                     <option key={e.id} value={e.emp_id}>{e.name} ({e.emp_id})</option>
                                 ))}

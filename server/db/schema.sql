@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS devices (
   last_action TEXT CHECK (last_action IN ('CHECK_IN', 'CHECK_OUT')),
   last_action_at TIMESTAMPTZ,
   qr_code_url TEXT,
+  is_leased BOOLEAN DEFAULT FALSE,
   retired_at TIMESTAMPTZ,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

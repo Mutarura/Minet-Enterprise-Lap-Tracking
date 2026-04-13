@@ -79,43 +79,52 @@ router.get('/:serialNumber', authMiddleware, async (req, res) => {
 // POST /api/devices
 // ============================
 router.post('/', authMiddleware, requireRole('superadmin', 'admin'), async (req, res) => {
-  const { serialNumber, type, make, model, color, assignedTo } = req.body;
+  const { serialNumber, type, make, model, color, assignedTo, isLeased } = req.body;
 
-  if (!serialNumber || !type || !assignedTo) {
-    return res.status(400).json({ error: 'serialNumber, type and assignedTo are required' });
+  // Basic validation: serialNumber and type are always required
+  if (!serialNumber || !type) {
+    return res.status(400).json({ error: 'Device serialNumber and type are required [v2]' });
+  }
+
+  // Strict validation for BYOD: requires all details including assignment
+  if (type === 'BYOD' && (!make || !model || !assignedTo)) {
+    return res.status(400).json({ error: 'For BYOD devices; make, model, and assignedTo are required [v2]' });
   }
 
   try {
-    const existing = await pool.query(
-      'SELECT * FROM devices WHERE assigned_to = $1 AND type = $2 AND status = $3',
-      [assignedTo, type, 'ACTIVE']
-    );
+    // If assigning, check limits
+    if (assignedTo) {
+      const existing = await pool.query(
+        'SELECT * FROM devices WHERE assigned_to = $1 AND type = $2 AND status = $3',
+        [assignedTo, type, 'ACTIVE']
+      );
 
-    if (type === 'COMPANY' && existing.rows.length >= 1) {
-      return res.status(409).json({
-        error: `This employee already has a COMPANY device (${existing.rows[0].serial_number}). Only one per type is permitted.`
-      });
-    }
+      if (type === 'COMPANY' && existing.rows.length >= 2) {
+        return res.status(409).json({
+          error: `This employee has reached the maximum allowed COMPANY devices (2).`
+        });
+      }
 
-    if (type === 'BYOD' && existing.rows.length >= 2) {
-      return res.status(409).json({
-        error: 'This employee has reached the maximum allowed BYOD devices (2).'
-      });
+      if (type === 'BYOD' && existing.rows.length >= 2) {
+        return res.status(409).json({
+          error: 'This employee has reached the maximum allowed BYOD devices (2).'
+        });
+      }
     }
 
     const result = await pool.query(
-      `INSERT INTO devices (serial_number, type, make, model, color, assigned_to)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO devices (serial_number, type, make, model, color, assigned_to, is_leased)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [serialNumber, type, make || null, model || null, color || null, assignedTo]
+      [serialNumber, type, make || null, model || null, color || null, assignedTo || null, isLeased || false]
     );
 
     await writeAuditLog(
       req,
       'DEVICE_REGISTERED',
       serialNumber,
-      `${type} device ${serialNumber} registered and assigned to ${assignedTo}`,
-      { serialNumber, type, make, model, assignedTo }
+      `${type} device ${serialNumber} registered${assignedTo ? ` and assigned to ${assignedTo}` : ''}`,
+      { serialNumber, type, make, model, assignedTo, isLeased }
     );
 
     const io = req.app.get('io');
@@ -135,7 +144,7 @@ router.post('/', authMiddleware, requireRole('superadmin', 'admin'), async (req,
 // PUT /api/devices/:serialNumber
 // ============================
 router.put('/:serialNumber', authMiddleware, requireRole('superadmin', 'admin'), async (req, res) => {
-  const { make, model, color, type, assignedTo, qrCodeUrl } = req.body;
+  const { make, model, color, type, assignedTo, qrCodeUrl, isLeased } = req.body;
   const serialNumber = req.params.serialNumber;
 
   try {
@@ -159,9 +168,9 @@ router.put('/:serialNumber', authMiddleware, requireRole('superadmin', 'admin'),
         [assignedTo, deviceType, serialNumber, 'ACTIVE']
       );
 
-      if (deviceType === 'COMPANY' && existing.rows.length >= 1) {
+      if (deviceType === 'COMPANY' && existing.rows.length >= 2) {
         return res.status(409).json({
-          error: `This employee already has a COMPANY device (${existing.rows[0].serial_number}).`
+          error: `This employee has reached the maximum allowed COMPANY devices (2).`
         });
       }
 
@@ -186,10 +195,11 @@ router.put('/:serialNumber', authMiddleware, requireRole('superadmin', 'admin'),
         type        = COALESCE($4, type),
         assigned_to = $5,
         qr_code_url = COALESCE($6, qr_code_url),
+        is_leased   = COALESCE($7, is_leased),
         updated_at  = NOW()
-       WHERE serial_number = $7
+       WHERE serial_number = $8
        RETURNING *`,
-      [make, model, color, type, newAssignedTo, qrCodeUrl, serialNumber]
+      [make, model, color, type, newAssignedTo, qrCodeUrl, isLeased, serialNumber]
     );
 
     // Determine what changed and write appropriate audit log
@@ -228,7 +238,7 @@ router.put('/:serialNumber', authMiddleware, requireRole('superadmin', 'admin'),
         'DEVICE_UPDATED',
         serialNumber,
         `Device ${serialNumber} details updated`,
-        { serialNumber, changes: { make, model, color, type } }
+        { serialNumber, changes: { make, model, color, type, isLeased } }
       );
     }
 

@@ -194,10 +194,11 @@ export const getDevices = async () => {
 export const addDevice = async (data: {
   serialNumber: string;
   type: 'COMPANY' | 'BYOD';
-  make: string;
-  model: string;
-  color: string;
+  make?: string;
+  model?: string;
+  color?: string;
   assignedTo?: string | null;
+  isLeased?: boolean;
 }) => {
   return apiFetch('/devices', {
     method: 'POST',
@@ -214,6 +215,7 @@ export const updateDevice = async (
     color: string;
     type: 'COMPANY' | 'BYOD';
     qrCodeUrl?: string | null;
+    isLeased?: boolean;
   }>
 ) => {
   return apiFetch(`/devices/${serialNumber}`, {

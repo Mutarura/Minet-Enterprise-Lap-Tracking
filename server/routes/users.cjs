@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../db/index.cjs');
 const { authMiddleware, requireRole } = require('../middleware/auth.cjs');
@@ -17,26 +18,66 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-const sendPasswordEmail = async (email, name, username, tempPassword) => {
+const generateToken = () => crypto.randomBytes(32).toString('hex');
+
+const sendAccountCreatedEmail = async (email, name, username, token) => {
+  const url = `${process.env.APP_URL}/activate?token=${token}`;
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: `"Minet LAP Tracker" <${process.env.SMTP_USER}>`,
     to: email,
-    subject: 'Minet LAP Tracker - Your Account Details',
+    subject: 'Minet LAP Tracker — Set Your Password',
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a56db;">Minet LAP Tracker</h2>
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1e293b;">
+        <h2 style="color:#e21a22;">Minet LAP Tracker</h2>
         <p>Hello <strong>${name}</strong>,</p>
-        <p>Your account has been created. Here are your login details:</p>
-        <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
-          <p><strong>Username:</strong> ${username}</p>
-          <p><strong>Temporary Password:</strong> ${tempPassword}</p>
+        <p>Your account has been created. Your login username is:</p>
+        <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin:16px 0;border-left:4px solid #e21a22;">
+          <p style="margin:0;font-size:1.1rem;"><strong>Username:</strong> ${username}</p>
         </div>
-        <p>Please log in and change your password immediately.</p>
-        <p style="color: #6b7280; font-size: 12px;">
-          This is an automated message from Minet LAP Tracker. Do not reply.
+        <p>Click the button below to set your password and activate your account:</p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${url}" style="background:#e21a22;color:white;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block;">
+            Set My Password
+          </a>
+        </div>
+        <p style="color:#64748b;font-size:0.9rem;">Or copy this link:<br/>
+          <a href="${url}" style="color:#1a56db;word-break:break-all;">${url}</a>
         </p>
-      </div>
-    `
+        <div style="background:#fff7ed;border:1px solid #fed7aa;padding:12px 16px;border-radius:6px;margin:24px 0;">
+          <p style="margin:0;font-size:0.85rem;color:#9a3412;">
+            This link expires in <strong>24 hours</strong> and can only be used once.
+          </p>
+        </div>
+      </div>`
+  });
+};
+
+const sendPasswordResetEmail = async (email, name, username, token) => {
+  const url = `${process.env.APP_URL}/activate?token=${token}`;
+  await transporter.sendMail({
+    from: `"Minet LAP Tracker" <${process.env.SMTP_USER}>`,
+    to: email,
+    subject: 'Minet LAP Tracker — Password Reset',
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1e293b;">
+        <h2 style="color:#e21a22;">Minet LAP Tracker</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>A password reset has been requested for your account (<strong>${username}</strong>).</p>
+        <p>Click the button below to set a new password:</p>
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${url}" style="background:#e21a22;color:white;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block;">
+            Reset My Password
+          </a>
+        </div>
+        <p style="color:#64748b;font-size:0.9rem;">Or copy this link:<br/>
+          <a href="${url}" style="color:#1a56db;word-break:break-all;">${url}</a>
+        </p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;padding:12px 16px;border-radius:6px;margin:24px 0;">
+          <p style="margin:0;font-size:0.85rem;color:#9a3412;">
+            This link expires in <strong>24 hours</strong> and can only be used once.
+          </p>
+        </div>
+      </div>`
   });
 };
 
