@@ -975,6 +975,15 @@ const AdminDashboard = () => {
                             </button>
                         </div>
 
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600', paddingLeft: '0.25rem' }}>
+                            {deviceFilter === 'all' && `${filteredDevices.length} ${activeTab === 'company' ? 'company laptop' : 'BYOD device'}${filteredDevices.length !== 1 ? 's' : ''} total`}
+                            {deviceFilter === 'assigned' && `${filteredDevices.length} assigned`}
+                            {deviceFilter === 'unassigned' && `${filteredDevices.length} unassigned`}
+                            {deviceFilter === 'leased' && `${filteredDevices.length} leased`}
+                            {' '}
+                            {deviceFilter !== 'all' && <span style={{ color: '#94a3b8', fontWeight: '400' }}>of {devices.filter(d => activeTab === 'company' ? d.type === 'COMPANY' : d.type === 'BYOD').length} total</span>}
+                        </div>
+
                         <div className="device-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1.5rem' }}>
                             {filteredDevices.map(dev => (
                                 <DeviceCard
