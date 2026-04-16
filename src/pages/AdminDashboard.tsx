@@ -536,7 +536,7 @@ const AdminDashboard = () => {
                         </div>
 
                         {/* Details Panel */}
-                        <aside ref={detailsPanelRef} className="glass-card" style={{ padding: '2.5rem', height: 'fit-content', position: 'sticky', top: '100px', boxShadow: detailsHighlight ? '0 0 0 3px rgba(226, 26, 34, 0.25)' : undefined }}>
+                        <aside ref={detailsPanelRef} className="glass-card employee-form-panel" style={{ padding: '2.5rem', height: 'fit-content', position: 'sticky', top: '100px', boxShadow: detailsHighlight ? '0 0 0 3px rgba(226, 26, 34, 0.25)' : undefined }}>
                             {isAddingEmployee || selectedEmployee ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -342,6 +342,21 @@ select:focus {
   gap: 1.25rem;
 }
 
+/* Employee form panel: independent scroll on desktop with hidden scrollbar */
+@media (min-width: 769px) {
+  .employee-form-panel {
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -ms-overflow-style: none; /* Edge/IE */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .employee-form-panel::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+}
+
 @media (max-width: 640px) {
   .device-card {
     flex-direction: column;
