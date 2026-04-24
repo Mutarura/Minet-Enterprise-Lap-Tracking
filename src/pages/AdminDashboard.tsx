@@ -372,12 +372,13 @@ const AdminDashboard = () => {
 
     const filteredEmployees = employees.filter(e =>
         String(e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        String(e.emp_id || '').toLowerCase().includes(searchTerm.toLowerCase())
+        String(e.emp_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(e.department || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const filteredDevices = devices.filter(d => {
         if (activeTab === 'company' ? d.type !== 'COMPANY' : d.type !== 'BYOD') return false;
-        if (searchTerm && !String(d.serial_number || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
+        if (searchTerm && ![d.serial_number, d.make, d.model, d.assigned_employee_name, d.assigned_to].some(v => String(v || '').toLowerCase().includes(searchTerm.toLowerCase()))) return false;
         if (deviceFilter === 'assigned') return !!d.assigned_to;
         if (deviceFilter === 'unassigned') return !d.assigned_to;
         if (deviceFilter === 'leased') return d.is_leased === true;
@@ -646,38 +647,29 @@ const AdminDashboard = () => {
                                                     <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Laptop size={16} /> Asset Inventory</h4>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                                         {['COMPANY', 'BYOD'].map(type => {
-                                                            const dev = getAssignedDevices(selectedEmployee.emp_id).find(d => d.type === type);
+                                                            const devs = getAssignedDevices(selectedEmployee.emp_id).filter(d => d.type === type);
                                                             return (
-                                                                <div key={type} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.75rem', background: 'white', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                                                                        <span style={{ color: '#475569', fontWeight: '800' }}>{type} LAPTOP</span>
-                                                                        {dev ? (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                                                                <span style={{ fontWeight: '700', color: 'var(--primary)', background: 'rgba(226, 26, 34, 0.05)', padding: '2px 6px', borderRadius: '4px' }}>{dev.serial_number}</span>
-                                                                                {/* CHANGE 4f: unassign now includes audit log */}
-                                                                                <button type="button" onClick={async () => {
-                                                                                    if (confirm('Unassign this device?')) {
-                                                                                        try {
-                                                                                            await updateDevice(dev.serial_number, { assignedTo: null });
-                                                                                            await logSystemEvent(
-                                                                                                { type: 'DEVICE_UNASSIGNED', category: 'DEVICE_MANAGEMENT' },
-                                                                                                { id: dev.serial_number, type: 'DEVICE', metadata: { previousAssignee: selectedEmployee.emp_id } },
-                                                                                                'SUCCESS',
-                                                                                                `Device ${dev.serial_number} unassigned from ${selectedEmployee.emp_id} via employee panel`
-                                                                                            );
-                                                                                            loadData();
-                                                                                        } catch (err: any) {
-                                                                                            alert('Failed to unassign: ' + err.message);
-                                                                                        }
-                                                                                    }
-                                                                                }} style={{ background: '#fee2e2', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}>
-                                                                                    <Trash2 size={14} />
+                                                                <div key={type} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                        <span style={{ color: '#475569', fontWeight: '800', fontSize: '0.85rem' }}>{type} LAPTOP{devs.length > 1 ? 'S' : ''}</span>
+                                                                        <button type="button" onClick={() => { setAssigningType(type as any); setAssignSearch(''); }} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}>+ Assign</button>
+                                                                    </div>
+                                                                    {devs.length === 0 ? (
+                                                                        <div style={{ padding: '0.5rem 0.75rem', background: 'white', borderRadius: 'var(--radius-sm)', border: '1px dashed #cbd5e1', fontSize: '0.8rem', color: '#94a3b8' }}>None assigned</div>
+                                                                    ) : (
+                                                                        devs.map(dev => (
+                                                                            <div key={dev.serial_number} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'white', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
+                                                                                <div>
+                                                                                    <span style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '0.85rem' }}>{dev.serial_number}</span>
+                                                                                    <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '0.5rem' }}>{dev.make} {dev.model}</span>
+                                                                                    {dev.is_leased && <span style={{ marginLeft: '0.5rem', fontSize: '0.65rem', fontWeight: '800', background: 'rgba(226,26,34,0.1)', color: 'var(--primary)', padding: '1px 5px', borderRadius: '3px' }}>LEASED</span>}
+                                                                                </div>
+                                                                                <button type="button" onClick={async () => { if (confirm('Unassign this device?')) { await updateDevice(dev.serial_number, { assignedTo: null }); loadData(); } }} style={{ background: '#fee2e2', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '5px', borderRadius: '5px', display: 'flex', alignItems: 'center' }}>
+                                                                                    <Trash2 size={13} />
                                                                                 </button>
                                                                             </div>
-                                                                        ) : (
-                                                                            <button type="button" onClick={() => { setAssigningType(type as any); setAssignSearch(''); }} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}>+ Assign</button>
-                                                                        )}
-                                                                    </div>
+                                                                        ))
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
