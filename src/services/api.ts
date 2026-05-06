@@ -523,6 +523,40 @@ const compressImage = (file: File): Promise<string> => {
   });
 };
 
+// ============================
+// DEVICE RETRIEVED / UNLOCK
+// ============================
+export const retrieveDevice = async (serialNumber: string, locationNote?: string) => {
+  return apiFetch(`/logs`, {
+    method: 'POST',
+    body: JSON.stringify({
+      empId: 'SECURITY',
+      employeeName: 'Security Guard',
+      serialNumber,
+      action: 'RETRIEVED',
+      locationNote: locationNote || ''
+    })
+  });
+};
+
+export const unlockDevice = async (serialNumber: string) => {
+  return apiFetch(`/logs/unlock/${serialNumber}`, { method: 'POST' });
+};
+
+export const getDeviceAlerts = async () => {
+  return apiFetch('/logs/alerts');
+};
+
+export const markAlertRead = async (id: string) => {
+  return apiFetch(`/logs/alerts/${id}/read`, { method: 'POST' });
+};
+
+export const resolveAlert = async (id: string) => {
+  return apiFetch(`/alerts/${id}/resolve`, { method: 'POST' });
+};
+// ============================
+// FILE UPLOAD
+// ============================
 export const uploadFile = async (_path: string, file: File) => {
   return compressImage(file);
 };

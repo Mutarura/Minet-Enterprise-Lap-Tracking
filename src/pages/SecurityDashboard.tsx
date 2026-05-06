@@ -16,7 +16,8 @@ import {
     subscribeToTodayVendorVisits,
     logSystemEvent,
     getToken,
-    getUser
+    getUser,
+    retrieveDevice
 } from '../services/api';
 import QRScanner from '../components/QRScanner';
 import Modal from '../components/Modal';
@@ -94,6 +95,8 @@ const SecurityDashboard = () => {
     const [searchVisitor, setSearchVisitor] = useState('');
     const [pendingCount, setPendingCount] = useState(0);
     const [lastActionQueued, setLastActionQueued] = useState(false);
+    const [locationNote, setLocationNote] = useState('');
+    const [retrieveLoading, setRetrieveLoading] = useState(false);
 
     const resetMobileState = () => {
         if (typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -270,6 +273,7 @@ const SecurityDashboard = () => {
     let type = fallbackType;
     let make = fallbackMake;
     let model = fallbackModel;
+    let isRetrieved = false;
 
     try {
       const deviceData = await (
@@ -286,6 +290,7 @@ const SecurityDashboard = () => {
       lastActionAt = deviceData.last_action_at || null;
       empId = deviceData.assigned_to || 'Unassigned';
       employeeName = deviceData.assigned_employee_name || 'Unassigned';
+      isRetrieved = deviceData.status === 'retrieved';
 
       if (empId !== 'Unassigned') {
         const employeeData: any = await getEmployeeByEmpId(empId);
@@ -307,6 +312,7 @@ const SecurityDashboard = () => {
       type,
       currentStatus,
       lastActionAt,
+      retrieved: isRetrieved,
     });
     setScanState('reviewing');
 
@@ -803,7 +809,7 @@ const SecurityDashboard = () => {
                                     ...visitorLogs.map(v => ({ ...v, sortTime: new Date(v.check_in_time || 0).getTime(), entryType: 'VISITOR' })),
                                     ...vendorLogs.map(v => ({ ...v, sortTime: new Date(v.check_in_time || 0).getTime(), entryType: 'VENDOR' }))
                                 ].sort((a, b) => b.sortTime - a.sortTime).map((item, idx) => (
-                                    <div key={`${item.entryType}-${item.id}-${idx}`} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${item.entryType === 'DEVICE' ? (item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)') : (item.status === 'IN' ? '#10b981' : '#64748b')}` }}>
+                                    <div key={`${item.entryType}-${item.id}-${idx}`} className="glass-card" style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${item.entryType === 'DEVICE' ? (item.action === 'CHECK_IN' ? '#10b981' : item.action === 'RETRIEVED' ? '#7c3aed' : 'var(--primary)') : (item.status === 'IN' ? '#10b981' : '#64748b')}` }}>
                                         <div>
                                             {item.entryType === 'DEVICE' ? (
                                                 <>
@@ -815,7 +821,7 @@ const SecurityDashboard = () => {
                                                     </div>
                                                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
                                                         <span style={{ fontWeight: '700', color: item.action === 'CHECK_IN' ? '#10b981' : 'var(--primary)', marginRight: '6px' }}>
-                                                            {item.action === 'CHECK_IN' ? 'IN' : 'OUT'}
+                                                          {item.action === 'CHECK_IN' ? 'IN' : item.action === 'RETRIEVED' ? 'RETRIEVED' : 'OUT'}
                                                         </span>
                                                         Device: {item.serial_number}
                                                     </div>
@@ -948,41 +954,80 @@ const SecurityDashboard = () => {
                             </div>
                         </div>
 
-                        <div className="button-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <button
-                                onClick={() => handleAction('CHECK_IN')}
-                                disabled={actionLoading || scannedMetadata.currentStatus === 'CHECK_IN'}
-                                style={{
-                                    ...btnActionStyle,
-                                    background: '#10b981',
-                                    opacity: scannedMetadata.currentStatus === 'CHECK_IN' ? 0.4 : 1,
-                                    cursor: scannedMetadata.currentStatus === 'CHECK_IN' ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                <LogIn size={20} />
-                                {scannedMetadata.currentStatus === 'CHECK_IN' ? 'ALREADY IN' : 'CHECK IN'}
-                            </button>
+                        {scannedMetadata.retrieved ? (
+            <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 'var(--radius-sm)', padding: '1.5rem', textAlign: 'center' }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontWeight: '800', color: 'var(--primary)', fontSize: '1rem' }}>⚠ DEVICE RETRIEVED</p>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#7f1d1d' }}>This device has been marked as retrieved by security. Contact IT to unlock it before scanning.</p>
+            </div>
+        ) : (
+            <>
+                <div className="button-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <button
+                        onClick={() => handleAction('CHECK_IN')}
+                        disabled={actionLoading || scannedMetadata.currentStatus === 'CHECK_IN'}
+                        style={{
+                            ...btnActionStyle,
+                            background: '#10b981',
+                            opacity: scannedMetadata.currentStatus === 'CHECK_IN' ? 0.4 : 1,
+                            cursor: scannedMetadata.currentStatus === 'CHECK_IN' ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <LogIn size={20} />
+                        {scannedMetadata.currentStatus === 'CHECK_IN' ? 'ALREADY IN' : 'CHECK IN'}
+                    </button>
 
-                            <button
-                                onClick={() => handleAction('CHECK_OUT')}
-                                disabled={actionLoading || scannedMetadata.currentStatus === 'CHECK_OUT'}
-                                style={{
-                                    ...btnActionStyle,
-                                    background: 'var(--primary)',
-                                    opacity: scannedMetadata.currentStatus === 'CHECK_OUT' ? 0.4 : 1,
-                                    cursor: scannedMetadata.currentStatus === 'CHECK_OUT' ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                <LogOut size={20} />
-                                {scannedMetadata.currentStatus === 'CHECK_OUT' ? 'ALREADY OUT' : 'CHECK OUT'}
-                            </button>
-                        </div>
+                    <button
+                        onClick={() => handleAction('CHECK_OUT')}
+                        disabled={actionLoading || scannedMetadata.currentStatus === 'CHECK_OUT'}
+                        style={{
+                            ...btnActionStyle,
+                            background: 'var(--primary)',
+                            opacity: scannedMetadata.currentStatus === 'CHECK_OUT' ? 0.4 : 1,
+                            cursor: scannedMetadata.currentStatus === 'CHECK_OUT' ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <LogOut size={20} />
+                        {scannedMetadata.currentStatus === 'CHECK_OUT' ? 'ALREADY OUT' : 'CHECK OUT'}
+                    </button>
+                </div>
 
-                        {scannedMetadata.currentStatus !== 'UNKNOWN' && (
-                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                                * Only the valid next action is available.
-                            </p>
-                        )}
+                {scannedMetadata.currentStatus !== 'UNKNOWN' && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                        * Only the valid next action is available.
+                    </p>
+                )}
+
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <input
+                        type="text"
+                        placeholder="Where was it found? (optional)"
+                        value={locationNote}
+                        onChange={e => setLocationNote(e.target.value)}
+                        style={{ ...inputStyle, fontSize: '0.9rem' }}
+                    />
+                    <button
+                        onClick={async () => {
+                            if (!confirm(`You are marking this device as Retrieved. Kindly confirm. If so, follow the required protocol.`)) return;
+                            setRetrieveLoading(true);
+                            try {
+                                await retrieveDevice(scannedMetadata.serialNumber, locationNote);
+                                setLocationNote('');
+                                setScanState('success');
+                                setTimeout(() => { setScanState('idle'); setScannedMetadata(null); }, 2500);
+                            } catch (err: any) {
+                                alert('Failed to mark as retrieved: ' + err.message);
+                            } finally {
+                                setRetrieveLoading(false);
+                            }
+                        }}
+                        disabled={retrieveLoading}
+                        style={{ padding: '0.9rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: '700', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: retrieveLoading ? 0.6 : 1 }}
+                    >
+                        🔍 {retrieveLoading ? 'Marking...' : 'RETRIEVED — Found Device'}
+                    </button>
+                </div>
+            </>
+        )}
                     </div>
                 )}
 

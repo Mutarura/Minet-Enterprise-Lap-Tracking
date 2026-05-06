@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import AdminDashboard from './pages/AdminDashboard';
 import SecurityDashboard from './pages/SecurityDashboard';
+import HeadSecurityDashboard from './pages/HeadSecurityDashboard';
 import { getToken, getUser } from './services/api';
 import './index.css';
 
@@ -37,7 +38,8 @@ const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: '
 
   const hasAccess =
     (role === 'admin' && (user.role === 'superadmin' || user.role === 'admin')) ||
-    (role === 'security' && user.role === 'security');
+    (role === 'security' && user.role === 'security') ||
+    (role === 'head_security' && user.role === 'head_security');
 
   if (!hasAccess) {
     return (
@@ -62,6 +64,7 @@ function App() {
         <Route path="/login/security" element={<SecurityLogin />} />
         <Route path="/dashboard/it" element={<ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>} />
         <Route path="/dashboard/security" element={<ProtectedRoute role="security"><SecurityDashboard /></ProtectedRoute>} />
+        <Route path="/dashboard/security-admin" element={<ProtectedRoute role="head_security"><HeadSecurityDashboard /></ProtectedRoute>} />
         <Route path="/print-label" element={<PrintLabel />} />
         <Route path="/activate" element={<ActivateAccount />} />
         <Route path="/admin" element={<Navigate to="/dashboard/it" replace />} />

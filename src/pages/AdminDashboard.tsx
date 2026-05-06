@@ -19,7 +19,10 @@ import {
     logSystemEvent,
     getEmployeeByEmpId,
     getToken,
-    getUser
+    getUser,
+    unlockDevice,
+    getDeviceAlerts,
+    markAlertRead
 } from '../services/api';
 
 import { useNavigate } from 'react-router-dom';
@@ -63,7 +66,8 @@ const AdminDashboard = () => {
     const [employees, setEmployees] = useState<any[]>([]);
     const [devices, setDevices] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [deviceFilter, setDeviceFilter] = useState<'all' | 'assigned' | 'unassigned' | 'leased'>('all');
+    const [deviceFilter, setDeviceFilter] = useState<'all' | 'assigned' | 'unassigned' | 'leased' | 'retrieved'>('all');
+    const [deviceAlerts, setDeviceAlerts] = useState<any[]>([]);
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [alertsLoading, setAlertsLoading] = useState(false);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -195,6 +199,7 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         if (activeTab === 'alerts' && alerts.length === 0) loadData(true);
+        if (activeTab === 'alerts') getDeviceAlerts().then(setDeviceAlerts).catch(console.error);
         if (activeTab === 'audit_logs') loadData();
     }, [activeTab]);
 
@@ -379,9 +384,10 @@ const AdminDashboard = () => {
     const filteredDevices = devices.filter(d => {
         if (activeTab === 'company' ? d.type !== 'COMPANY' : d.type !== 'BYOD') return false;
         if (searchTerm && ![d.serial_number, d.make, d.model, d.assigned_employee_name, d.assigned_to].some(v => String(v || '').toLowerCase().includes(searchTerm.toLowerCase()))) return false;
-        if (deviceFilter === 'assigned') return !!d.assigned_to;
-        if (deviceFilter === 'unassigned') return !d.assigned_to;
+        if (deviceFilter === 'assigned') return !!d.assigned_to && d.status !== 'retrieved';
+        if (deviceFilter === 'unassigned') return !d.assigned_to && d.status !== 'retrieved';
         if (deviceFilter === 'leased') return d.is_leased === true;
+        if (deviceFilter === 'retrieved') return d.status === 'retrieved';
         return true;
     });
 
@@ -820,6 +826,58 @@ const AdminDashboard = () => {
                                 ))}
                             </div>
                         )}
+                        )
+
+                        {/* Retrieved Device Alerts */}
+                        {deviceAlerts.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '1.25rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    <span style={{ fontSize: '1.5rem' }}>🔍</span>
+                                    <div>
+                                        <h3 style={{ margin: 0, color: '#5b21b6', fontSize: '1rem' }}>Retrieved Device Alerts</h3>
+                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#7c3aed' }}>Devices found and marked retrieved by security. Superadmin can release them.</p>
+                                    </div>
+                                </div>
+                                {deviceAlerts.map(alert => (
+                                    <div key={alert.id} className="glass-card" style={{ padding: '1.25rem', borderLeft: '4px solid #7c3aed', position: 'relative' }}>
+                                        {!alert.is_read && (
+                                            <span style={{ position: 'absolute', top: '1rem', right: '1rem', width: '10px', height: '10px', borderRadius: '50%', background: '#7c3aed', display: 'inline-block' }} title="Unread" />
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <p style={{ margin: 0, fontWeight: '800', fontSize: '1rem', color: 'var(--secondary)' }}>S/N: {alert.device_serial}</p>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Found by: <strong>{alert.created_by}</strong></p>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>{alert.message}</p>
+                                                <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(alert.created_at).toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        {userRole === 'superadmin' && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (!confirm(`Release device ${alert.device_serial} back to active status?`)) return;
+                                                    try {
+                                                        await unlockDevice(alert.device_serial);
+                                                        setDeviceAlerts(prev => prev.filter(a => a.id !== alert.id));
+                                                        window.alert('Device released successfully.');
+                                                    } catch (err: any) {
+                                                        window.alert('Failed: ' + err.message);
+                                                    }
+                                                }}
+                                                style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                🔓 Release Device
+                                            </button>
+                                        )}
+                                        {!alert.is_read && (
+                                            <button onClick={() => markAlertRead(alert.id).then(() => setDeviceAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, is_read: true } : a)))}
+                                                style={{ marginTop: '0.5rem', marginLeft: userRole === 'superadmin' ? '0.5rem' : '0', padding: '0.5rem 1rem', background: 'white', border: '1px solid #ddd6fe', color: '#7c3aed', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                Mark as Read
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 ) : activeTab === 'audit_logs' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -958,6 +1016,7 @@ const AdminDashboard = () => {
                                 <option value="assigned">Assigned</option>
                                 <option value="unassigned">Unassigned</option>
                                 {activeTab === 'company' && <option value="leased">Leased</option>}
+                                {activeTab === 'company' && <option value="retrieved">Retrieved</option>}
                             </select>
                             <button onClick={() => loadData(true)} className="glass-card compact-card" style={{ padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', cursor: 'pointer' }}>
                                 <RefreshCw size={20} /> Refresh
@@ -1122,9 +1181,28 @@ const AdminDashboard = () => {
                             </button>
                         )}
 
-                        <button type="submit" className="btn-primary" style={{ marginTop: '0.5rem' }}>
-                            {editingDevice ? 'Update Device' : 'Register Device'}
-                        </button>
+                        {editingDevice && editingDevice.status === 'retrieved' && userRole === 'superadmin' && (
+    <button
+        type="button"
+        onClick={async () => {
+            if (!confirm(`Release device ${editingDevice.serial_number} back to active status?`)) return;
+            try {
+                await unlockDevice(editingDevice.serial_number);
+                setModalOpen(false);
+                loadData();
+                window.alert('Device released successfully.');
+            } catch (err: any) {
+                window.alert('Failed to release: ' + err.message);
+            }
+        }}
+        style={{ padding: '0.75rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
+    >
+        🔓 Release Device
+    </button>
+)}
+<button type="submit" className="btn-primary" style={{ marginTop: '0.5rem' }}>
+    {editingDevice ? 'Update Device' : 'Register Device'}
+</button>
                     </form>
                 )}
             </Modal>
@@ -1182,6 +1260,7 @@ const AdminDashboard = () => {
                         <select value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value as any })} style={inputStyle}>
                             <option value="admin">Admin (Internal Ops)</option>
                             <option value="security">Security (Gate Ops)</option>
+                            <option value="head_security">Head of Security (Command Centre)</option>
                         </select>
                     </div>
                     {userForm.role === 'admin' && (
@@ -1196,6 +1275,7 @@ const AdminDashboard = () => {
                         <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', lineHeight: 1.4 }}>
                             {userForm.role === 'admin' && "Can manage employees, company/BYOD devices, and view violation reports."}
                             {userForm.role === 'security' && "Can manage visitors, vendor check-ins, and standard device logging."}
+                            {userForm.role === 'head_security' && "Read-only command centre. Views device status, activity logs, visitors, vendors and alerts. Cannot scan or manage records."}
                         </p>
                     </div>
                     {!editingUser && <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600' }}>* Username will be auto-generated and a secure password setup email will be sent.</p>}

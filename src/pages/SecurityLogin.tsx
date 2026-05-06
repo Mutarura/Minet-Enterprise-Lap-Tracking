@@ -28,7 +28,12 @@ const SecurityLogin = () => {
                 'Security Portal Login'
             );
 
-            navigate('/dashboard/security');
+            const loggedInUser = JSON.parse(localStorage.getItem('minet_user') || '{}');
+            if (loggedInUser.role === 'head_security') {
+                navigate('/dashboard/security-admin');
+            } else {
+                navigate('/dashboard/security');
+            }
         } catch (err: any) {
     try {
         await logSystemEvent(
