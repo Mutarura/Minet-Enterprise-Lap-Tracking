@@ -35,7 +35,7 @@ const HeadSecurityDashboard = () => {
     const [retrievedAlerts, setRetrievedAlerts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [deviceFilter, setDeviceFilter] = useState<'all' | 'in' | 'out' | 'retrieved'>('all');
+    const [deviceFilter, setDeviceFilter] = useState<'all' | 'in' | 'out' | 'retrieved'>('in');
 
     // Export state
     const [showExportModal, setShowExportModal] = useState(false);
@@ -59,7 +59,7 @@ const HeadSecurityDashboard = () => {
             const [devRes, logsRes, visitorsRes, vendorsRes] = await Promise.all([
                 fetch('/api/devices', { headers }),
                 fetch('/api/logs/today', { headers }),
-                fetch('/api/visitors', { headers }),
+                fetch('/api/visitors/today', { headers }),
                 fetch('/api/vendors/visits/today', { headers }).catch(() => ({ json: () => [] }))
             ]);
 
@@ -269,7 +269,7 @@ const HeadSecurityDashboard = () => {
                                 <h3 style={{ margin: 0, color: 'var(--secondary)', fontSize: '1rem', fontWeight: '800' }}>Device Status</h3>
                                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                     <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '8px', padding: '3px' }}>
-                                        {(['all', 'in', 'out', 'retrieved'] as const).map(f => (
+                                        {(['in', 'out', 'retrieved'] as const).map(f => (
                                             <button key={f} onClick={() => setDeviceFilter(f)}
                                                 style={{ padding: '0.4rem 0.75rem', background: deviceFilter === f ? 'white' : 'transparent', border: 'none', borderRadius: '6px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer', color: deviceFilter === f ? 'var(--secondary)' : '#64748b', boxShadow: deviceFilter === f ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
                                                 {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -442,6 +442,27 @@ const HeadSecurityDashboard = () => {
                                     <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Found by: <strong>{alert.created_by}</strong></p>
                                     <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>{alert.message}</p>
                                     <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(alert.created_at).toLocaleString()}</p>
+                                    <button
+                        onClick={async () => {
+                            if (!confirm(`Release device ${alert.device_serial} back to active status?`)) return;
+                            try {
+                                const token = getToken();
+                                const res = await fetch(`/api/logs/unlock/${alert.device_serial}`, {
+                                    method: 'POST',
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                if (!res.ok) throw new Error('Server error');
+                                setRetrievedAlerts(prev => prev.filter(a => a.id !== alert.id));
+                                window.alert('Device released successfully.');
+                                loadAll();
+                            } catch (err: any) {
+                                window.alert('Failed to release: ' + err.message);
+                            }
+                        }}
+                        style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '0.85rem' }}
+                    >
+                        🔓 Release Device
+                    </button>
                                 </div>
                             ))}
                         </div>

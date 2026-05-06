@@ -835,7 +835,7 @@ const AdminDashboard = () => {
                                     <span style={{ fontSize: '1.5rem' }}>🔍</span>
                                     <div>
                                         <h3 style={{ margin: 0, color: '#5b21b6', fontSize: '1rem' }}>Retrieved Device Alerts</h3>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#7c3aed' }}>Devices found and marked retrieved by security. Superadmin can release them.</p>
+                                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#7c3aed' }}>Devices found and marked retrieved by security. Head of Security can release them.</p>
                                     </div>
                                 </div>
                                 {deviceAlerts.map(alert => (
@@ -1181,25 +1181,6 @@ const AdminDashboard = () => {
                             </button>
                         )}
 
-                        {editingDevice && editingDevice.status === 'retrieved' && userRole === 'superadmin' && (
-    <button
-        type="button"
-        onClick={async () => {
-            if (!confirm(`Release device ${editingDevice.serial_number} back to active status?`)) return;
-            try {
-                await unlockDevice(editingDevice.serial_number);
-                setModalOpen(false);
-                loadData();
-                window.alert('Device released successfully.');
-            } catch (err: any) {
-                window.alert('Failed to release: ' + err.message);
-            }
-        }}
-        style={{ padding: '0.75rem', background: '#7c3aed', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
-    >
-        🔓 Release Device
-    </button>
-)}
 <button type="submit" className="btn-primary" style={{ marginTop: '0.5rem' }}>
     {editingDevice ? 'Update Device' : 'Register Device'}
 </button>

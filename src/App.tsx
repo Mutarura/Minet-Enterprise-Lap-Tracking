@@ -12,13 +12,13 @@ import ITLogin from './pages/ITLogin';
 import SecurityLogin from './pages/SecurityLogin';
 import PrintLabel from './pages/PrintLabel';
 import ActivateAccount from './pages/ActivateAccount';
+const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' | 'head_security' }) => {
 
-const ProtectedRoute = ({ children, role }: { children: React.ReactNode, role: 'admin' | 'security' }) => {
   const token = getToken();
   const user = getUser();
 
   if (!token || !user) {
-    const loginPath = role === 'security' ? '/login/security' : '/login/it';
+    const loginPath = role === 'security' ? '/login/security' : role === 'head_security' ? '/login/security' : '/login/it';
     return <Navigate to={loginPath} replace />;
   }
 
