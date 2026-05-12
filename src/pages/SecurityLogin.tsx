@@ -8,9 +8,36 @@ const SecurityLogin = () => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+
     const [loading, setLoading] = useState(false);
+    const [showForgot, setShowForgot] = useState(false);
+    const [forgotUsername, setForgotUsername] = useState('');
+    const [forgotStatus, setForgotStatus] = useState('');
+    const [forgotLoading, setForgotLoading] = useState(false);
     const navigate = useNavigate();
 
+    const handleForgotPassword = async () => {
+    if (!forgotUsername.trim()) { setForgotStatus('Please enter your username.'); return; }
+    setForgotLoading(true);
+    setForgotStatus('');
+    try {
+        const res = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: forgotUsername.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setForgotStatus(data.error || 'Something went wrong.');
+        } else {
+            setForgotStatus(data.message || 'Reset link sent.');
+        }
+    } catch {
+        setForgotStatus('Something went wrong. Please try again.');
+    } finally {
+        setForgotLoading(false);
+    }
+};
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -157,11 +184,55 @@ const SecurityLogin = () => {
                             {loading ? 'Authenticating...' : 'Log in to Dashboard'}
                         </button>
                     </form>
+                    <button
+                        type="button"
+                        onClick={() => { setShowForgot(true); setForgotStatus(''); setForgotUsername(''); }}
+                        style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.85rem', marginTop: '1rem', cursor: 'pointer', textDecoration: 'underline', width: '100%', textAlign: 'center' }}
+                    >
+                        Forgot password?
+                    </button>
                 </div>
             </div>
             <p style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 System Access Requires Authorized Credentials
             </p>
+        
+          {showForgot && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+                <div style={{ background: 'white', borderRadius: '12px', padding: '2rem', width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <h3 style={{ margin: 0, color: '#1e293b' }}>Reset Password</h3>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Enter your username and we will send a reset link to your registered email address.</p>
+                    <input
+                        type="text"
+                        placeholder="Your username"
+                        value={forgotUsername}
+                        onChange={e => setForgotUsername(e.target.value)}
+                        style={{ padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.95rem', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                    />
+                    {forgotStatus && (
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: forgotStatus.includes('sent') ? '#166634' : '#b91c1c', background: forgotStatus.includes('sent') ? '#dcfce7' : '#fee2e2', padding: '0.75rem', borderRadius: '6px' }}>
+                            {forgotStatus}
+                        </p>
+                    )}
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                        <button
+                            onClick={() => setShowForgot(false)}
+                            style={{ flex: 1, padding: '0.75rem', background: '#f1f5f9', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', color: '#475569' }}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleForgotPassword}
+                            disabled={forgotLoading}
+                            style={{ flex: 1, padding: '0.75rem', background: '#1e293b', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: forgotLoading ? 'not-allowed' : 'pointer', opacity: forgotLoading ? 0.7 : 1 }}
+                        >
+                            {forgotLoading ? 'Sending...' : 'Send Reset Link'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+                
+        )}
         </div>
     );
 };
